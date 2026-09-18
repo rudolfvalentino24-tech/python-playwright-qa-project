@@ -65,6 +65,37 @@ button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:9px;backgr
     Demo credentials: <strong>tester</strong> / <strong>password123</strong>
   </div>
 </main>
+
+<script>
+document.getElementById("loginForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const form = event.currentTarget;
+
+    if (!form.reportValidity()) {
+        return;
+    }
+
+    const formData = new FormData(form);
+
+    const response = await fetch("/login", {
+        method: "POST",
+        body: formData
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+        localStorage.setItem("authToken", data.token);
+        localStorage.setItem("username", data.username);
+
+        window.location.href = "/playground";
+    } else {
+        alert(data.error || "Login failed");
+    }
+});
+</script>
+
 </body>
 </html>
 """
