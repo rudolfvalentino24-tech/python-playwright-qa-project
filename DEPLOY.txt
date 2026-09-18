@@ -1,0 +1,20 @@
+Render-ready files
+
+Copy these files into your GitHub project:
+
+render.yaml
+    -> C:\Users\rudol\PycharmProjects\PythonProject\render.yaml
+
+qa_testing_playground\store.py
+    -> replace your current qa_testing_playground\store.py
+
+qa_testing_playground\qa_playground.py
+    -> replace your current qa_testing_playground\qa_playground.py
+
+qa_testing_playground\requirements.txt
+    -> replace your current qa_testing_playground\requirements.txt
+
+Then:
+git add .
+git commit -m "Prepare Flask apps for Render deployment"
+git push
