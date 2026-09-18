@@ -1,0 +1,5 @@
+flask
+pytest
+playwright
+pytest-playwright
+pytest-repeat
