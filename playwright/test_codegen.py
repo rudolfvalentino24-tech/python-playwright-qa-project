@@ -1,12 +1,13 @@
 import re
 from playwright.sync_api import Playwright, sync_playwright, expect
+from utils.config import playgroundURL
 
 
 def test_run(playwright: Playwright) -> None:
     browser = playwright.chromium.launch(headless=True)
     context = browser.new_context()
     page = context.new_page()
-    page.goto("http://127.0.0.1:3001/")
+    page.goto(playgroundURL)
     page.get_by_test_id("username-input").fill("tester")
     page.get_by_test_id("password-input").fill("password123")
     page.get_by_test_id("terms-checkbox").check()

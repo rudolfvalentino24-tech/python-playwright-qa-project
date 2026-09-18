@@ -1,8 +1,9 @@
 from playwright.sync_api import Page, Playwright,  expect
+from utils.config import storeURL, playgroundURL
 
 def test_UIValidationDynamincScript(page: Page):
     # Wireless Mouse, Playwright T-Shirt -> verify 2 items
-    page.goto("http://127.0.0.1:3002")
+    page.goto(storeURL)
     mouse = page.locator(".product").filter(has_text="Wireless Mouse")
     mouse.get_by_role("button", name="Add to Cart").click()
     tshirt = page.locator(".product").filter(has_text="Playwright T-Shirt") #CSS class and filter visible text
@@ -19,7 +20,7 @@ def test_UIValidationDynamincScript(page: Page):
     expect(tshirt_item.locator('input[name="quantity"]')).to_have_value("1")
 
 def test_childWindowHandle(page:Page):
-    page.goto("http://127.0.0.1:3001")
+    page.goto(playgroundURL)
     page.get_by_label("Username").fill("tester")
     page.get_by_label("password").fill("password123")
     page.locator("#termsCheckbox").check()

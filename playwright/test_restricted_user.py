@@ -1,10 +1,11 @@
 from playwright.sync_api import Page, expect
+from utils.config import storeURL
 
 
 def test_orders_user_restricted_to_orders(page: Page):
 
     # Open login page
-    page.goto("http://127.0.0.1:3002")
+    page.goto(storeURL)
 
     # Login as restricted user
     page.get_by_label("Username").fill("ordersuser")
@@ -18,7 +19,7 @@ def test_orders_user_restricted_to_orders(page: Page):
 
     # Restricted user should be sent to Orders
     expect(page).to_have_url(
-        "http://127.0.0.1:3002/orders"
+        f"{storeURL}/orders"
     )
 
     # Verify Orders page is accessible
@@ -27,9 +28,9 @@ def test_orders_user_restricted_to_orders(page: Page):
     ).to_be_visible()
 
     # Try to access the Store directly
-    page.goto("http://127.0.0.1:3002/store")
+    page.goto(f"{storeURL}/store")
 
     # User should be redirected back to Orders
     expect(page).to_have_url(
-        "http://127.0.0.1:3002/orders"
+        f"{storeURL}/orders"
     )

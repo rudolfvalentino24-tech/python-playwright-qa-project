@@ -1,5 +1,6 @@
 from playwright.sync_api import Page, Playwright
 from utils.apiBase import APIUtils
+from utils.config import storeURL
 
 fakePayloadOrderResponse = {
     "data": [], "message": "No orders yet"
@@ -11,7 +12,7 @@ def intercept_response(route):
     )
 
 def test_Network(page: Page):
-    page.goto("http://127.0.0.1:3002")
+    page.goto(storeURL)
     page.route("**/api/orders",intercept_response)
 
     page.get_by_label("Username").fill("tester")
@@ -31,5 +32,5 @@ def test_sessionStorage(playwright: Playwright):
     page = context.new_page()
     #script to inject token in session local storage
     page.add_init_script(f"""localStorage.setItem('authToken', '{getToken}');""")
-    page.goto("http://127.0.0.1:3002/orders")
+    page.goto(f"{storeURL}/orders")
 

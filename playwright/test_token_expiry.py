@@ -1,5 +1,6 @@
 from playwright.sync_api import Playwright
 from utils.apiBase import APIUtils
+from utils.config import storeURL
 
 
 def test_token_expired(playwright: Playwright):
@@ -10,7 +11,7 @@ def test_token_expired(playwright: Playwright):
     token = api_utils.getToken(playwright)
 
     api_request_context = playwright.request.new_context(
-        base_url="http://127.0.0.1:3002"
+        base_url=storeURL
     )
 
     # 2. Verify the token works first

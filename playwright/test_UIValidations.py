@@ -1,9 +1,10 @@
 import time
 from playwright.sync_api import Page, Playwright,  expect
+from utils.config import playgroundURL
 
 
 def test_UIChecks(page: Page):
-    page.goto("http://127.0.0.1:3001")
+    page.goto(playgroundURL)
     page.get_by_label("Username").fill("tester")
     page.get_by_label("password").fill("password123")
     page.locator("#termsCheckbox").check()
@@ -13,7 +14,7 @@ def test_UIChecks(page: Page):
     expect(page.locator("textarea")).to_have_value("Newtwo")
 
 def test_alertBoxes(page: Page):
-    page.goto("http://127.0.0.1:3001")
+    page.goto(playgroundURL)
     page.get_by_label("Username").fill("tester")
     page.get_by_label("password").fill("password123")
     page.locator("#termsCheckbox").check()
@@ -25,7 +26,7 @@ def test_alertBoxes(page: Page):
     time.sleep(5)
 
 def test_frames(page: Page):
-    page.goto("http://127.0.0.1:3001")
+    page.goto(playgroundURL)
     page.get_by_label("Username").fill("tester")
     page.get_by_label("password").fill("password123")
     page.locator("#termsCheckbox").check()
@@ -37,7 +38,7 @@ def test_frames(page: Page):
     pageFrame.get_by_role("button", name="JavaScript Alert").click()
 
 def test_tables(page: Page):
-    page.goto("http://127.0.0.1:3001")
+    page.goto(playgroundURL)
 
     page.get_by_label("Username").fill("tester")
     page.get_by_label("password").fill("password123")
@@ -62,7 +63,7 @@ def test_tables(page: Page):
     ).to_have_text("QA Engineer")
 
 def test_mouseHover(page: Page):
-    page.goto("http://127.0.0.1:3001")
+    page.goto(playgroundURL)
     page.get_by_label("Username").fill("tester")
     page.get_by_label("Password").fill("password123")
     page.locator("#termsCheckbox").check()

@@ -1,4 +1,6 @@
 from playwright.sync_api import Playwright
+from utils.config import storeURL
+
 ordersPayload = {
     "firstName": "test",
     "lastName": "test",
@@ -20,7 +22,7 @@ ordersPayload = {
 class APIUtils:
 
     def getToken(self, playwright:Playwright):
-        api_request_context = playwright.request.new_context(base_url="http://127.0.0.1:3002")
+        api_request_context = playwright.request.new_context(base_url=storeURL)
         response = api_request_context.post("/login",
                                             form = {
                                                 "username":"tester",
@@ -38,7 +40,7 @@ class APIUtils:
     def createOrder(self, playwright:Playwright):
 
         token = self.getToken(playwright)
-        api_request_context = playwright.request.new_context(base_url="http://127.0.0.1:3002")
+        api_request_context = playwright.request.new_context(base_url=storeURL)
         response = api_request_context.post("/api/orders",
                                  data = ordersPayload,
                                  headers = {"Authorization": f"Bearer {token}",

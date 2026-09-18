@@ -392,7 +392,7 @@ from playwright.sync_api import Page, expect
 
 def test_orders_user_restricted_to_orders(page: Page):
 
-    page.goto("http://127.0.0.1:3002")
+    page.goto(storeURL)
 
     page.get_by_label("Username").fill("ordersuser")
     page.get_by_label("Password").fill("orders123")

@@ -1,5 +1,6 @@
 from playwright.sync_api import Playwright, expect
 from utils.apiBase import APIUtils
+from utils.config import storeURL
 
 
 def test_E2E_web_api(playwright: Playwright):
@@ -14,7 +15,7 @@ def test_E2E_web_api(playwright: Playwright):
     page = context.new_page()
 
     # Login to STORE
-    page.goto("http://127.0.0.1:3002")
+    page.goto(storeURL)
 
     page.get_by_label("Username").fill("tester")
     page.get_by_label("Password").fill("password123")
@@ -22,7 +23,7 @@ def test_E2E_web_api(playwright: Playwright):
     page.get_by_role("button",name="Login").click()
 
     expect(page).to_have_url(
-        "http://127.0.0.1:3002/store"
+        f"{storeURL}/store"
     )
 
     # Open order history
