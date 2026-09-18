@@ -1,9 +1,10 @@
 from flask import Flask, request, redirect, url_for, session, jsonify, render_template_string
+import os
 import time
 import secrets
 
 app = Flask(__name__)
-app.secret_key = "qa-playground-secret-key"
+app.secret_key = os.environ.get("SECRET_KEY", "qa-playground-secret-key")
 
 DEMO_USER = "tester"
 DEMO_PASSWORD = "password123"
@@ -64,34 +65,6 @@ button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:9px;backgr
     Demo credentials: <strong>tester</strong> / <strong>password123</strong>
   </div>
 </main>
-<script>
-document.getElementById("loginForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
-
-    const form = event.currentTarget;
-
-    if (!form.reportValidity()) {
-        return;
-    }
-
-    const formData = new FormData(form);
-
-    const response = await fetch("/login", {
-        method: "POST",
-        body: formData
-    });
-
-    const data = await response.json();
-
-    if (response.ok) {
-        localStorage.setItem("authToken", data.token);
-
-        window.location.href = "/playground";
-    } else {
-        alert(data.error);
-    }
-});
-</script>
 </body>
 </html>
 """
@@ -696,6 +669,34 @@ document.getElementById('framePromptBtn').addEventListener('click', () => {
 });
 
 </script>
+<script>
+document.getElementById("loginForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const form = event.currentTarget;
+
+    if (!form.reportValidity()) {
+        return;
+    }
+
+    const formData = new FormData(form);
+
+    const response = await fetch("/login", {
+        method: "POST",
+        body: formData
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+        localStorage.setItem("authToken", data.token);
+
+        window.location.href = "/playground";
+    } else {
+        alert(data.error);
+    }
+});
+</script>
 </body>
 </html>
 """
@@ -772,4 +773,11 @@ def api_status():
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=3001, debug=True)
+    port = int(os.environ.get("PORT", 3001))
+    debug = os.environ.get("FLASK_DEBUG") == "1"
+
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=debug
+    )

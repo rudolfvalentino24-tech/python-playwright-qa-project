@@ -1,10 +1,11 @@
 from flask import Flask, render_template_string, request, redirect, url_for, session, jsonify
 from datetime import timedelta
+import os
 import secrets
 import time
 
 app = Flask(__name__)
-app.secret_key = "qa-store-secret-key"
+app.secret_key = os.environ.get("SECRET_KEY", "qa-store-secret-key")
 app.permanent_session_lifetime = timedelta(days=30)
 
 USERS = {
@@ -1129,4 +1130,6 @@ def create_api_order():
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=3002, debug=True)
+    port = int(os.environ.get("PORT", 3002))
+    debug = os.environ.get("FLASK_DEBUG") == "1"
+    app.run(host="0.0.0.0", port=port, debug=debug)

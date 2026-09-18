@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: python-playwright-qa-store
+    runtime: python
+    plan: free
+    rootDir: qa_testing_playground
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn store:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+
+  - type: web
+    name: python-playwright-qa-playground
+    runtime: python
+    plan: free
+    rootDir: qa_testing_playground
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn qa_playground:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
