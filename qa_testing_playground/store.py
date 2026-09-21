@@ -61,7 +61,6 @@ h1{margin:0 0 8px} p{color:#5f6b7a}
 label{display:block;font-weight:650;margin-top:14px}
 input{width:100%;padding:11px 12px;margin-top:6px;border:1px solid #b8c1cf;border-radius:9px;font-size:16px}
 button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:9px;background:#2457d6;color:#fff;font-weight:750;cursor:pointer}
-.hint{font-size:13px;background:#eef3ff;padding:10px;border-radius:8px;margin-top:16px}
 .error{display:none;margin-top:12px;padding:10px;background:#fff0f0;color:#9b1c1c;border-radius:8px}
 </style>
 </head>
@@ -92,10 +91,6 @@ button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:9px;backgr
 
   <div id="loginError" class="error" role="alert" data-testid="login-error"></div>
 
-  <div class="hint">
-    <strong>Admin</strong>: tester / password123<br>
-    <strong>Orders user</strong>: ordersuser / orders123
-  </div>
 </main>
 
 <script>
