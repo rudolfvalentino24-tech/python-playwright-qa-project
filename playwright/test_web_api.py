@@ -1,6 +1,6 @@
 import json
-from pathlib import Path
 import pytest
+from pathlib import Path
 from playwright.sync_api import Playwright, expect
 from utils.apiBase import APIUtils
 from utils.config import storeURL
@@ -15,7 +15,7 @@ def test_E2E_web_api(playwright: Playwright, user_credentials):
 
     # Create order through API
     api_utils = APIUtils()
-    order_id = api_utils.createOrder(playwright)
+    order_id = api_utils.createOrder(playwright, user_credentials)
 
     # Open browser
     browser = playwright.chromium.launch(headless=False)

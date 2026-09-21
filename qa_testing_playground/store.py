@@ -1004,7 +1004,10 @@ def api_orders():
             "error": auth_error
         }), 401
 
-    orders = get_orders_for_user("tester")
+    if identity["role"] == "orders_viewer":
+        orders = get_orders_for_user("tester")
+    else:
+        orders = get_orders_for_user(identity["username"])
 
     return jsonify({
         "username": identity["username"],
