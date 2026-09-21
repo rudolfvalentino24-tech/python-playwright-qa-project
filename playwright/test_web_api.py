@@ -1,9 +1,17 @@
+import json
+from pathlib import Path
+import pytest
 from playwright.sync_api import Playwright, expect
 from utils.apiBase import APIUtils
 from utils.config import storeURL
 
+credentials_file = Path(__file__).parent / "data" / "credentials.json"
+with open(credentials_file) as f:
+    test_data = json.load(f)
+    user_credentials_list = test_data["user_credentials"]
 
-def test_E2E_web_api(playwright: Playwright):
+@pytest.mark.parametrize('user_credentials', user_credentials_list)
+def test_E2E_web_api(playwright: Playwright, user_credentials):
 
     # Create order through API
     api_utils = APIUtils()
@@ -17,8 +25,8 @@ def test_E2E_web_api(playwright: Playwright):
     # Login to STORE
     page.goto(storeURL)
 
-    page.get_by_label("Username").fill("tester")
-    page.get_by_label("Password").fill("password123")
+    page.get_by_label("Username").fill(user_credentials["userEmail"])
+    page.get_by_label("Password").fill(user_credentials["userPassword"])
     page.locator("#termsCheckbox").check()
     page.get_by_role("button",name="Login").click()
 
