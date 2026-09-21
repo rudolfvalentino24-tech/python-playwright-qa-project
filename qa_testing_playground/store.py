@@ -13,6 +13,10 @@ USERS = {
         "password": "password123",
         "role": "admin"
     },
+    "admin2": {
+        "password": "admin123",
+        "role": "admin"
+    },
     "ordersuser": {
         "password": "orders123",
         "role": "orders_viewer"
