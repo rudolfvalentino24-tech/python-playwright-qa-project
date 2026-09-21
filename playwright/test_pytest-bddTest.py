@@ -1,6 +1,5 @@
 import pytest
 from pytest_bdd import given, when, then, parsers, scenarios
-from conftest import browserInstance
 from pageObjects.login import LoginPage
 from utils.apiBaseFramework import APIUtils
 
@@ -35,7 +34,7 @@ def login_to_portal(username, password, shared_data):
 @when('navigate to orders page')
 def navigate_to_orders_page(shared_data):
     dashboardPage = shared_data['dashboard_page']
-    orderHistoryPage = dashboardPage.selectOerdersNaviLink()
+    orderHistoryPage = dashboardPage.selectOrdersNaviLink()
     shared_data['orderHistory_page'] = orderHistoryPage
 
 @when('select the orderID')

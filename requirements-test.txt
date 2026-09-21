@@ -1,0 +1,6 @@
+pytest
+playwright
+pytest-playwright
+pytest-html
+pytest-bdd
+pytest-repeat
