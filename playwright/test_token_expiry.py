@@ -1,5 +1,5 @@
 from playwright.sync_api import Playwright
-from utils.apiBase import APIUtils
+from utils.apiBaseFramework import APIUtils
 from utils.config import storeURL
 
 

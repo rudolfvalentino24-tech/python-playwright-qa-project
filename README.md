@@ -44,7 +44,7 @@ PythonProject/
 │   ├── test_UIValidations_1.py
 │   └── test_web_api.py
 │
-├── pytestDir/
+├── pytest/
 │   ├── conftest.py
 │   ├── test_PytestValidation.py
 │   └── test_PytestValidation2.py

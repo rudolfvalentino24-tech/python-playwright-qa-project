@@ -1,5 +1,5 @@
-import pytestDir
+import pytest
 
-@pytestDir.fixture(scope="session")
+@pytest.fixture(scope="session")
 def preSetupWork():
     print("browser instance")

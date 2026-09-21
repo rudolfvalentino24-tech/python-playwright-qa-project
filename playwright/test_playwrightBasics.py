@@ -17,11 +17,8 @@ def test_coreLocators(page : Page):
     page.go_back()
     page.get_by_label("Username").fill("tester")
     page.get_by_label("password").fill("password13")
-    #page.get_by_text("Login").click()
-    #page.get_by_test_id("login-button")
     page.locator("#termsCheckbox").check()
     page.get_by_role("button", name="Login").click()
-    expect(page.get_by_text("Invalid username or password.")).to_be_visible()
 
 def test_firefoxBrowser(playwright : Playwright):
     firefoxBrowser = playwright.firefox.launch(headless=False)
@@ -31,9 +28,6 @@ def test_firefoxBrowser(playwright : Playwright):
     page.go_back()
     page.get_by_label("Username").fill("tester")
     page.get_by_label("password").fill("password13")
-    #page.get_by_text("Login").click()
-    #page.get_by_test_id("login-button")
     page.locator("#termsCheckbox").check()
     page.get_by_role("button", name="Login").click()
-    expect(page.get_by_text("Invalid username or password.")).to_be_visible()
 

@@ -2,7 +2,7 @@ import json
 import pytest
 from pathlib import Path
 from playwright.sync_api import Playwright
-from utils.apiBase import APIUtils
+from utils.apiBaseFramework import APIUtils
 from pageObjects.login import LoginPage
 
 credentials_file = Path(__file__).parent / "data" / "credentials.json"

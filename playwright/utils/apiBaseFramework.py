@@ -23,12 +23,14 @@ ordersPayload = {
 
 class APIUtils:
 
-    def getToken(self, playwright:Playwright):
+    def getToken(self, playwright:Playwright, user_credentials):
+        user_name = user_credentials['userEmail']
+        user_password = user_credentials['userPassword']
         api_request_context = playwright.request.new_context(base_url=storeURL)
         response = api_request_context.post("/login",
                                             form = {
-                                                "username": "tester",
-                                                "password": "password123",
+                                                "username": user_name,
+                                                "password": user_password,
                                                 "terms": "on"
             }
         )
@@ -39,9 +41,9 @@ class APIUtils:
         print(f"Token: {token}")
         return token
 
-    def createOrder(self, playwright:Playwright):
+    def createOrder(self, playwright:Playwright, user_credentials):
 
-        token = self.getToken(playwright)
+        token = self.getToken(playwright, user_credentials)
         api_request_context = playwright.request.new_context(base_url=storeURL)
         response = api_request_context.post("/api/orders",
                                  data = ordersPayload,

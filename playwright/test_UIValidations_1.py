@@ -1,9 +1,13 @@
-from playwright.sync_api import Page, Playwright,  expect
+from playwright.sync_api import Page,  expect
 from utils.config import storeURL, playgroundURL
 
 def test_UIValidationDynamincScript(page: Page):
     # Wireless Mouse, Playwright T-Shirt -> verify 2 items
     page.goto(storeURL)
+    page.get_by_label("Username").fill("tester")
+    page.get_by_label("password").fill("password123")
+    page.locator("#termsCheckbox").check()
+    page.get_by_role("button", name="Login").click()
     mouse = page.locator(".product").filter(has_text="Wireless Mouse")
     mouse.get_by_role("button", name="Add to Cart").click()
     tshirt = page.locator(".product").filter(has_text="Playwright T-Shirt") #CSS class and filter visible text

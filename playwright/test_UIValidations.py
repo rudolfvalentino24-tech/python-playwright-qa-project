@@ -1,5 +1,5 @@
 import time
-from playwright.sync_api import Page, Playwright,  expect
+from playwright.sync_api import Page,  expect
 from utils.config import playgroundURL
 
 
@@ -39,18 +39,26 @@ def test_frames(page: Page):
 
 def test_tables(page: Page):
     page.goto(playgroundURL)
-
     page.get_by_label("Username").fill("tester")
     page.get_by_label("password").fill("password123")
     page.locator("#termsCheckbox").check()
     page.get_by_role("button", name="Login").click()
 
+    # Wait until the table is loaded
+    expect(
+        page.get_by_role("columnheader", name="Role")
+    ).to_be_visible()
+
     # Find Role column
+    roleColValue = None
+    headers = page.locator("th")
     for index in range(page.locator("th").count()):
         if page.locator("th").nth(index).filter(has_text="Role").count() > 0:
             roleColValue = index
             print(f"The column is {roleColValue}")
             break
+
+    assert roleColValue is not None, "Role column was not found"
 
     # Sort Name descending, matching your screenshot
     page.get_by_role("button", name="Name ↕").click()
