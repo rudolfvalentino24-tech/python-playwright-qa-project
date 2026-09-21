@@ -3,7 +3,9 @@ from datetime import timedelta
 import os
 import secrets
 import time
-
+# -------------------------
+# DATA
+# -------------------------
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "qa-store-secret-key")
 app.permanent_session_lifetime = timedelta(days=30)
@@ -45,6 +47,10 @@ TOKEN_EXPIRY_SECONDS = 30 * 60
 # }
 TOKENS = {}
 
+# ============================================================
+# HTML TEMPLATE: LOGIN PAGE
+# Edit the Store login page below.
+# ============================================================
 LOGIN_HTML = r"""
 <!doctype html>
 <html lang="en">
@@ -130,6 +136,9 @@ document.getElementById("loginForm").addEventListener("submit", async (event) =>
 </html>
 """
 
+# ============================================================
+# HTML TEMPLATE: TERMS & CONDITIONS PAGE
+# ============================================================
 TERMS_HTML = """
 <!doctype html><html lang="en"><head><meta charset="utf-8"><title>Terms</title>
 <style>body{font-family:system-ui;padding:40px;background:#f5f7fb;color:#172033}.card{max-width:760px;margin:auto;background:white;border:1px solid #dce2ec;border-radius:14px;padding:24px}a{display:inline-block;margin-top:20px}</style>
@@ -141,6 +150,9 @@ TERMS_HTML = """
 </main></body></html>
 """
 
+# ============================================================
+# HTML TEMPLATE: MAIN STORE / PRODUCTS PAGE
+# ============================================================
 STORE_HTML = """
 <!doctype html>
 <html lang="en">
@@ -198,6 +210,9 @@ main{width:min(1100px,calc(100% - 32px));margin:28px auto 80px}
 </html>
 """
 
+# ============================================================
+# HTML TEMPLATE: SHOPPING CART PAGE
+# ============================================================
 CART_HTML = """
 <!doctype html>
 <html lang="en">
@@ -247,6 +262,9 @@ input{width:90px;padding:8px;border:1px solid #b8c1cf;border-radius:7px}button,.
 </html>
 """
 
+# ============================================================
+# HTML TEMPLATE: CHECKOUT PAGE
+# ============================================================
 CHECKOUT_HTML = """
 <!doctype html>
 <html lang="en">
@@ -299,6 +317,12 @@ CHECKOUT_HTML = """
 """
 
 
+# ============================================================
+# HTML TEMPLATE: ORDER HISTORY PAGE
+# IMPORTANT:
+# - View Order and Delete Order buttons are rendered here.
+# - Search for "ORDER HISTORY ACTION BUTTONS" to edit them.
+# ============================================================
 ORDERS_HTML = """
 <!doctype html>
 <html lang="en">
@@ -381,6 +405,22 @@ main{
 .order-number{
     font-weight:800;
     font-size:18px
+}
+.order-actions{
+    display:flex;
+    gap:10px;
+    margin-top:16px;
+    align-items:center
+}
+
+.delete-button{
+    padding:9px 13px;
+    border:0;
+    border-radius:8px;
+    background:#c62828;
+    color:white;
+    font-weight:600;
+    cursor:pointer
 }
 
 .meta{
@@ -505,6 +545,29 @@ function renderOrders(orders) {
 
         const items = order.items || [];
 
+        // ============================================================
+        // ORDER HISTORY ACTION BUTTONS
+        // Add/change View Order or Delete Order buttons in this block.
+        // Delete is intentionally available only to admin users.
+        // ============================================================
+        const deleteButton = "{{ role }}" === "admin"
+            ? `
+                <form
+                    method="post"
+                    action="/orders/${encodeURIComponent(order.order_number)}/delete"
+                    style="display:inline"
+                    onsubmit="return confirm('Are you sure you want to delete this order?');">
+
+                    <button
+                        type="submit"
+                        class="delete-button"
+                        data-testid="delete-order-${escapeHtml(order.order_number)}">
+                        Delete Order
+                    </button>
+                </form>
+            `
+            : "";
+
         const itemRows = items.map((item, itemIndex) => `
             <tr data-testid="order-item-${itemIndex + 1}">
                 <td>${escapeHtml(item.name)}</td>
@@ -571,6 +634,19 @@ function renderOrders(orders) {
                     </tbody>
                 </table>
 
+                <div class="order-actions">
+
+                    <a
+                        href="/orders/${encodeURIComponent(order.order_number)}"
+                        class="button"
+                        data-testid="view-order-${escapeHtml(order.order_number)}">
+                        View Order
+                    </a>
+
+                    ${deleteButton}
+
+                </div>
+
             </section>
         `;
     }).join("");
@@ -585,6 +661,10 @@ function renderOrders(orders) {
 }
 
 
+// ============================================================
+// ORDER HISTORY API LOADER
+// Fetches GET /api/orders and then calls renderOrders().
+// ============================================================
 async function loadOrders() {
     const container = document.getElementById("ordersContainer");
     const token = localStorage.getItem("authToken");
@@ -662,8 +742,261 @@ loadOrders();
 </body>
 </html>
 """
+# ============================================================
+# HTML TEMPLATE: SINGLE ORDER DETAILS PAGE
+# IMPORTANT:
+# - Back to Orders and Delete Order buttons are near the bottom.
+# ============================================================
+ORDER_DETAILS_HTML = """
+<!doctype html>
+<html lang="en">
 
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
+<title>Order Details</title>
+
+<style>
+
+:root{
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    color:#172033;
+    background:#f5f7fb
+}
+
+*{
+    box-sizing:border-box
+}
+
+body{
+    margin:0
+}
+
+header{
+    background:#172033;
+    color:white;
+    padding:14px 24px;
+    display:flex;
+    align-items:center;
+    gap:14px
+}
+
+header h1{
+    margin:0;
+    margin-right:auto
+}
+
+header a{
+    color:white;
+    text-decoration:none
+}
+
+main{
+    width:min(900px,calc(100% - 32px));
+    margin:30px auto
+}
+
+.card{
+    background:white;
+    border:1px solid #dce2ec;
+    border-radius:14px;
+    padding:24px
+}
+
+.meta{
+    color:#667085;
+    margin:7px 0
+}
+
+.total{
+    font-size:22px;
+    font-weight:800;
+    margin-top:20px
+}
+
+table{
+    width:100%;
+    border-collapse:collapse;
+    margin-top:24px
+}
+
+th,
+td{
+    text-align:left;
+    padding:10px;
+    border-bottom:1px solid #e1e6ee
+}
+
+.actions{
+    display:flex;
+    gap:10px;
+    margin-top:20px
+}
+
+.button{
+    display:inline-block;
+    padding:10px 14px;
+    border-radius:8px;
+    background:#2457d6;
+    color:white;
+    text-decoration:none;
+    border:0;
+    cursor:pointer
+}
+
+.delete-button{
+    background:#c62828
+}
+
+</style>
+</head>
+
+<body>
+
+<header>
+
+    <h1>Order Details</h1>
+
+    <span>
+        User: {{ username }}
+    </span>
+
+    <a href="/orders">
+        Back to Orders
+    </a>
+
+</header>
+
+<main>
+
+<div class="card">
+
+    <h2 data-testid="order-details-number">
+        {{ order.order_number }}
+    </h2>
+
+    <div class="meta">
+        Date: {{ order.created_at }}
+    </div>
+
+    <div class="meta">
+        Customer: {{ order.customer_name }}
+    </div>
+
+    <div class="meta">
+        Email: {{ order.email }}
+    </div>
+
+    <div class="meta">
+        Address: {{ order.address }}
+    </div>
+
+    <div class="meta">
+        Country: {{ order.country }}
+    </div>
+
+    <table data-testid="order-details-table">
+
+        <thead>
+        <tr>
+            <th>Product</th>
+            <th>Quantity</th>
+            <th>Price</th>
+            <th>Line total</th>
+        </tr>
+        </thead>
+
+        <tbody>
+
+        {% for item in order["items"] %}
+
+        <tr>
+            <td>{{ item.name }}</td>
+
+            <td>
+                {{ item.quantity }}
+            </td>
+
+            <td>
+                €{{ "%.2f"|format(item.price) }}
+            </td>
+
+            <td>
+                €{{ "%.2f"|format(
+                    item.price * item.quantity
+                ) }}
+            </td>
+        </tr>
+
+        {% endfor %}
+
+        </tbody>
+
+    </table>
+
+    <div
+        class="total"
+        data-testid="order-details-total">
+
+        Total:
+        €{{ "%.2f"|format(order.total) }}
+
+    </div>
+
+    <!-- ======================================================
+         ORDER DETAILS ACTION BUTTONS
+         Back to Orders + admin-only Delete Order.
+         ====================================================== -->
+    <div class="actions">
+
+        <a
+            href="/orders"
+            class="button"
+            data-testid="back-to-orders">
+
+            Back to Orders
+
+        </a>
+
+        {% if role == "admin" %}
+
+        <form
+            method="post"
+            action="{{ url_for(
+                'delete_order_route',
+                order_number=order.order_number
+            ) }}"
+            onsubmit="return confirm(
+                'Are you sure you want to delete this order?'
+            );">
+
+            <button
+                type="submit"
+                class="button delete-button"
+                data-testid="delete-order">
+
+                Delete Order
+
+            </button>
+
+        </form>
+
+        {% endif %}
+
+    </div>
+
+</div>
+
+</main>
+
+</body>
+</html>
+"""
+
+# ============================================================
+# HTML TEMPLATE: ORDER SUCCESS PAGE
+# ============================================================
 SUCCESS_HTML = """
 <!doctype html><html lang="en"><head><meta charset="utf-8"><title>Order Successful</title>
 <style>body{font-family:system-ui;background:#f5f7fb;padding:40px;color:#172033}.card{max-width:600px;margin:auto;background:white;border:1px solid #dce2ec;border-radius:14px;padding:28px}a{display:inline-block;margin-top:18px;padding:10px 14px;border-radius:8px;background:#2457d6;color:white;text-decoration:none}</style>
@@ -675,7 +1008,10 @@ SUCCESS_HTML = """
 <a href="/orders" data-testid="view-orders">View Order History</a>
 </main></body></html>
 """
-
+# ============================================================
+# HELPER FUNCTIONS
+# General authentication/cart helpers live in this section.
+# ============================================================
 
 def require_login():
     return bool(session.get("user"))
@@ -726,6 +1062,10 @@ def get_bearer_identity():
 
 
 
+# ============================================================
+# ORDER HELPER FUNCTIONS
+# Add future order lookup/filter/delete helper functions here.
+# ============================================================
 def get_orders_for_user(username):
     return ORDER_HISTORY.setdefault(username, [])
 
@@ -738,6 +1078,36 @@ def get_orders():
 
     return get_orders_for_user(username)
 
+def get_all_orders():
+    all_orders = []
+
+    for orders in ORDER_HISTORY.values():
+        all_orders.extend(orders)
+
+    all_orders.sort(
+        key=lambda order: order["order_number"],
+        reverse=True
+    )
+
+    return all_orders
+
+def find_order_by_number(order_number):
+    for username, orders in ORDER_HISTORY.items():
+        for order in orders:
+            if order["order_number"] == order_number:
+                return order
+
+    return None
+
+
+def delete_order_by_number(order_number):
+    for username, orders in ORDER_HISTORY.items():
+        for index, order in enumerate(orders):
+            if order["order_number"] == order_number:
+                del orders[index]
+                return True
+
+    return False
 
 def get_cart():
     return session.get("cart", {})
@@ -766,7 +1136,10 @@ def build_cart_items():
 
     return items, total
 
-
+# ============================================================
+# FLASK ROUTES START HERE
+# Page URLs and form actions are defined below.
+# ============================================================
 @app.get("/")
 def index():
     if require_login():
@@ -862,6 +1235,13 @@ def add_to_cart(product_id):
     return redirect(url_for("store"))
 
 
+# ============================================================
+# ORDER PAGE ROUTES
+# /orders                         -> order history
+# /orders/<order_number>          -> single order details
+# /orders/<order_number>/delete   -> delete order (admin only)
+# Add future order-page routes in this area.
+# ============================================================
 @app.get("/orders")
 def orders():
     if not require_login():
@@ -872,6 +1252,40 @@ def orders():
         username=session["user"],
         role=session["role"]
     )
+
+@app.get("/orders/<order_number>")
+def order_details(order_number):
+
+    if not require_login():
+        return redirect(url_for("index"))
+
+    order = find_order_by_number(order_number)
+
+    if not order:
+        return "Order not found", 404
+
+    return render_template_string(
+        ORDER_DETAILS_HTML,
+        order=order,
+        username=session["user"],
+        role=session["role"]
+    )
+
+
+@app.post("/orders/<order_number>/delete")
+def delete_order_route(order_number):
+
+    restriction = protect_admin_page()
+
+    if restriction:
+        return restriction
+
+    deleted = delete_order_by_number(order_number)
+
+    if not deleted:
+        return "Order not found", 404
+
+    return redirect(url_for("orders"))
 
 
 @app.get("/cart")
@@ -979,6 +1393,10 @@ def checkout():
     return render_template_string(CHECKOUT_HTML, total=total)
 
 
+# ============================================================
+# API ROUTES
+# Bearer-token endpoints used by Playwright/API tests.
+# ============================================================
 @app.get("/api/user")
 def api_user():
     identity, auth_error = get_bearer_identity()
@@ -995,6 +1413,10 @@ def api_user():
     }), 200
 
 
+# ============================================================
+# ORDER API: GET ALL ORDERS
+# Used by the Order History page and Playwright network tests.
+# ============================================================
 @app.get("/api/orders")
 def api_orders():
     identity, auth_error = get_bearer_identity()
@@ -1043,6 +1465,10 @@ def expire_token_for_test():
     }), 200
 
 
+# ============================================================
+# ORDER API: CREATE ORDER
+# Used by APIUtils.createOrder() in the Playwright tests.
+# ============================================================
 @app.post("/api/orders")
 def create_api_order():
     identity, auth_error = get_bearer_identity()
@@ -1126,19 +1552,6 @@ def create_api_order():
         "username": username,
         "total": round(total, 2)
     }), 201
-
-def get_all_orders():
-    all_orders = []
-
-    for orders in ORDER_HISTORY.values():
-        all_orders.extend(orders)
-
-    all_orders.sort(
-        key=lambda order: order["order_number"],
-        reverse=True
-    )
-
-    return all_orders
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 3002))
