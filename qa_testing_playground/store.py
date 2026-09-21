@@ -1004,10 +1004,7 @@ def api_orders():
             "error": auth_error
         }), 401
 
-    if identity["role"] == "orders_viewer":
-        orders = get_orders_for_user("tester")
-    else:
-        orders = get_orders_for_user(identity["username"])
+    orders = get_all_orders()
 
     return jsonify({
         "username": identity["username"],
@@ -1130,6 +1127,18 @@ def create_api_order():
         "total": round(total, 2)
     }), 201
 
+def get_all_orders():
+    all_orders = []
+
+    for orders in ORDER_HISTORY.values():
+        all_orders.extend(orders)
+
+    all_orders.sort(
+        key=lambda order: order["order_number"],
+        reverse=True
+    )
+
+    return all_orders
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 3002))
