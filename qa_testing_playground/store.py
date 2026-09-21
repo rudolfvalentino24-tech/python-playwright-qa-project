@@ -358,6 +358,16 @@ header a{
     text-decoration:none
 }
 
+header a[data-testid="orders-back-to-store"]{
+    padding:8px 12px;
+    border:1px solid white;
+    border-radius:8px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:36px
+}
+
 header button{
     padding:8px 12px;
     border-radius:8px;
@@ -409,17 +419,30 @@ main{
 .order-actions{
     display:flex;
     gap:10px;
-    margin-top:16px;
-    align-items:center
+    margin-top:12px;
+    align-items:center;
+    flex-wrap:wrap
+}
+
+.order-actions .button,
+.order-actions .delete-button{
+    min-width:110px;
+    height:40px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    margin:0;
+    padding:0 14px;
+    border-radius:8px;
+    font-weight:600;
+    line-height:1;
+    box-sizing:border-box
 }
 
 .delete-button{
-    padding:9px 13px;
     border:0;
-    border-radius:8px;
     background:#c62828;
     color:white;
-    font-weight:600;
     cursor:pointer
 }
 
@@ -789,7 +812,14 @@ header h1{
 
 header a{
     color:white;
-    text-decoration:none
+    text-decoration:none;
+    padding:8px 12px;
+    border:1px solid white;
+    border-radius:8px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:36px
 }
 
 main{
@@ -831,7 +861,8 @@ td{
 .actions{
     display:flex;
     gap:10px;
-    margin-top:20px
+    margin-top:20px;
+    align-items:center
 }
 
 .button{
@@ -846,7 +877,14 @@ td{
 }
 
 .delete-button{
-    background:#c62828
+    background:#c62828;
+    min-width:120px;
+    height:40px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    margin:0;
+    font-weight:600
 }
 
 </style>
@@ -946,18 +984,10 @@ td{
 
     <!-- ======================================================
          ORDER DETAILS ACTION BUTTONS
-         Back to Orders + admin-only Delete Order.
+         Admin-only Delete Order lives here.
+         Back to Orders is in the header above.
          ====================================================== -->
     <div class="actions">
-
-        <a
-            href="/orders"
-            class="button"
-            data-testid="back-to-orders">
-
-            Back to Orders
-
-        </a>
 
         {% if role == "admin" %}
 
