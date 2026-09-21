@@ -1,3 +1,4 @@
+from playwright.sync_api import expect
 from pageObjects.dashboard import DashboardPage
 from utils.config import storeURL
 
@@ -14,4 +15,8 @@ class LoginPage:
         self.page.locator("#termsCheckbox").check()
         self.page.get_by_role("button", name="Login").click()
         dashboardPage = DashboardPage(self.page)
+
+        expect(self.page).to_have_url(
+            f"{storeURL}/store"
+        )
         return dashboardPage
