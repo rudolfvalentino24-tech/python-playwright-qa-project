@@ -1530,7 +1530,8 @@ def create_api_order():
 
     if invalid_customer_fields:
         return jsonify({
-            "error": "Required customer fields must be non-empty strings"
+            "error": "Required customer fields must be non-empty strings",
+            "fields": invalid_customer_fields
         }), 400
 
     requested_items = payload.get("items", [])
