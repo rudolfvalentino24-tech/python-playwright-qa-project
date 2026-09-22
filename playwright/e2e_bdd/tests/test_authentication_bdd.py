@@ -22,23 +22,6 @@ def test_AUTH_04():
 def test_AUTH_05():
     pass
 
-@pytest.fixture
-def shared_data():
-    return {}
-
-@given("the user is on the login page")
-def user_on_login_page(browserInstance, shared_data):
-    login_page = LoginPage(browserInstance)
-    login_page.navigate()
-    shared_data["login_page"] = login_page
-
-@when("the admin logs in with valid credentials")
-def admin_logs_in_with_credentials(admin_credentials, shared_data):
-    shared_data["dashboard_page"] = shared_data["login_page"].login(
-        admin_credentials["userEmail"],
-        admin_credentials["userPassword"]
-    )
-
 @then("the admin should be logged in successfully")
 def admin_is_logged_in(shared_data):
     shared_data["dashboard_page"].verifyLoginSuccessful()
@@ -55,10 +38,6 @@ def admin_logs_in_with_invalid_password(admin_credentials, shared_data):
 @then("the login should be rejected")
 def login_is_rejected(shared_data):
     shared_data["login_page"].verifyInvalidLogin()
-
-@then("the login page should be displayed")
-def login_page_is_displayed(shared_data):
-    shared_data["login_page"].verifyLoginPage()
 
 @when("the user logs in with an invalid username")
 def user_logs_in_with_invalid_username(admin_credentials, shared_data):

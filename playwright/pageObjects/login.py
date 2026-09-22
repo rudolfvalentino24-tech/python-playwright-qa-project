@@ -52,3 +52,7 @@ class LoginPage:
         self.page.goto(f"{storeURL}/store")
         expect(self.page).to_have_url(f"{storeURL}/")
         expect(self.page.get_by_role("button", name="Login")).to_be_visible()
+
+    # Try to open the protected Store page without being authenticated
+    def openProtectedStorePage(self):
+        self.page.goto(f"{storeURL}/store")
