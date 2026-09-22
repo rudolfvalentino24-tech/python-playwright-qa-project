@@ -1515,9 +1515,13 @@ def create_api_order():
 
     username = identity["username"]
 
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
 
-    # Validate required customer fields
+    if not isinstance(payload, dict):
+        return jsonify({
+            "error": "Request body must be a JSON object"
+        }), 400
+
     required_customer_fields = ("firstName", "lastName", "email", "address", "country")
     invalid_customer_fields = [
         field for field in required_customer_fields
@@ -1526,7 +1530,7 @@ def create_api_order():
 
     if invalid_customer_fields:
         return jsonify({
-            "error": f"Missing or invalid required field: {invalid_customer_fields[0]}"
+            "error": "Required customer fields must be non-empty strings"
         }), 400
 
     requested_items = payload.get("items", [])
