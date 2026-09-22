@@ -79,7 +79,7 @@ def open_created_order(shared_data):
 @then("the correct order number should be displayed")
 def verify_order_number(shared_data):
 
-    shared_data["details_page"].verifyOrderNumber(shared_data["order_id"])
+    shared_data["details_page"].verifyOrderNumber()
 
 @then("the correct product should be displayed")
 def verify_product(shared_data):

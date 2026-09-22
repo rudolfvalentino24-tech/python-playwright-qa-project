@@ -1,7 +1,7 @@
 Feature: Store purchase
     Critical end-to-end purchase journeys
 
-  Scenario: Admin completes a complete purchase successfully
+  Scenario: Admin completes purchase successfully
     Given the admin is on the login page
     When the admin logs in
     And the admin adds a product to the cart

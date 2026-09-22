@@ -10,8 +10,6 @@ CREDENTIALS_FILE = Path(__file__).parent / "data" / "credentials.json"
 with open(CREDENTIALS_FILE, encoding="utf-8") as file:
     CREDENTIALS = json.load(file)["user_credentials"]
 
-E2E_DATA_FILE = (Path(__file__).parent/"data"/"e2e_checkout.json")
-
 def pytest_addoption(parser):
     parser.addoption(
         "--browser_name", action="store", default="chrome"
@@ -55,73 +53,27 @@ def browserInstance(playwright, request):
 
 @pytest.fixture
 def e2e_checkout_data():
-
     unique_id = uuid.uuid4().hex[:8]
 
-    first_names = [
-        "John",
-        "Maria",
-        "Alex",
-        "Anna",
-        "George",
-        "Sofia",
-        "Daniel",
-        "Elena"
-    ]
-
-    last_names = [
-        "Tester",
-        "Smith",
-        "Miller",
-        "Brown",
-        "Johnson",
-        "Taylor",
-        "Wilson",
-        "Martin"
-    ]
+    first_names = ["John", "Maria", "Alex", "Anna", "George", "Sofia", "Daniel", "Elena"]
+    last_names = ["Tester", "Smith", "Miller", "Brown", "Johnson", "Taylor", "Wilson", "Martin"]
 
     first_name = random.choice(first_names)
     last_name = random.choice(last_names)
 
     return {
         "productId": 1,
-
         "customer": {
             "firstName": first_name,
             "lastName": last_name,
-
-            "email": (
-                f"{first_name.lower()}."
-                f"{last_name.lower()}."
-                f"{unique_id}@example.com"
-            ),
-
-            "address": (
-                f"Test Street "
-                f"{random.randint(1, 999)}"
-            ),
-
+            "email": f"{first_name.lower()}.{last_name.lower()}.{unique_id}@example.com",
+            "address": f"Test Street {random.randint(1, 999)}",
             "country": "AT"
         },
-
         "payment": {
-            "cardName": (
-                f"{first_name} {last_name}"
-            ),
-
-            "cardNumber":
-                "4111 1111 1111 1111",
-
+            "cardName": f"{first_name} {last_name}",
+            "cardNumber": "4111 1111 1111 1111",
             "expiry": "12/30",
-
             "cvv": "123"
         }
     }
-
-@pytest.fixture(scope="session")
-def e2e_checkout_data():
-    with open(
-        E2E_DATA_FILE,
-        encoding="utf-8"
-    ) as file:
-        return json.load(file)
