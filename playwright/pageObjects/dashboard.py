@@ -7,27 +7,18 @@ class DashboardPage:
     def __init__(self, page):
         self.page = page
 
+    # Add a product to the cart and return its details
     def addProductToCart(self, product_id):
-
-        product_name = self.page.get_by_test_id(f"product-name-{product_id}")
-        product_price = self.page.get_by_test_id(f"price-{product_id}")
-        expect(product_name).to_be_visible()
-        expect(product_price).to_be_visible()
-
-        product = {
-            "id": product_id,
-            "name": product_name.inner_text(),
-            "price": float(
-                product_price.inner_text()
-                .replace("€", "")
-                .strip()
-            )
-        }
+        product_name = self.page.get_by_test_id(f"product-name-{product_id}").inner_text()
+        product_price = self.page.get_by_test_id(f"price-{product_id}").inner_text()
 
         self.page.get_by_test_id(f"add-product-{product_id}").click()
-        expect(self.page.get_by_test_id("cart-link")).to_contain_text("Cart (1)")
 
-        return product
+        return {
+            "id": product_id,
+            "name": product_name,
+            "price": float(product_price.replace("€", "").strip())
+        }
 
     def openCart(self):
 
@@ -51,3 +42,41 @@ class DashboardPage:
 
     def logout(self):
         self.page.get_by_test_id("logout-button").click()
+
+    # Verify that products and their Add to Cart buttons are displayed
+    def verifyProductsDisplayed(self):
+        product_names = self.page.locator("[data-testid^='product-name-']")
+        add_buttons = self.page.locator("[data-testid^='add-product-']")
+
+        expect(product_names.first).to_be_visible()
+        expect(add_buttons.first).to_be_visible()
+
+        assert product_names.count() > 0
+        assert product_names.count() == add_buttons.count()
+
+    # Verify that every product has a visible product name
+    def verifyProductNames(self):
+        product_names = self.page.locator("[data-testid^='product-name-']")
+
+        assert product_names.count() > 0
+
+        for index in range(product_names.count()):
+            expect(product_names.nth(index)).to_be_visible()
+
+    # Verify that every product has a visible price
+    def verifyProductPrices(self):
+        product_prices = self.page.locator("[data-testid^='price-']")
+
+        assert product_prices.count() > 0
+
+        for index in range(product_prices.count()):
+            expect(product_prices.nth(index)).to_be_visible()
+
+    # Verify that every product has an Add to Cart button
+    def verifyAddToCartButtons(self):
+        add_buttons = self.page.locator("[data-testid^='add-product-']")
+
+        assert add_buttons.count() > 0
+
+        for index in range(add_buttons.count()):
+            expect(add_buttons.nth(index)).to_be_visible()

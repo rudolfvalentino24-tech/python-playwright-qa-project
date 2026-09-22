@@ -1,6 +1,4 @@
-import pytest
-from pytest_bdd import given, when, then, scenario
-from pageObjects.login import LoginPage
+from pytest_bdd import when, then, scenario
 
 @scenario("../features/authentication.feature", "AUTH-01 Admin logs in with valid credentials")
 def test_AUTH_01():
@@ -25,10 +23,6 @@ def test_AUTH_05():
 @then("the admin should be logged in successfully")
 def admin_is_logged_in(shared_data):
     shared_data["dashboard_page"].verifyLoginSuccessful()
-
-@then("the Store page should be displayed")
-def store_page_is_displayed(shared_data):
-    shared_data["dashboard_page"].verifyStorePage()
 
 @when("the admin logs in with an invalid password")
 def admin_logs_in_with_invalid_password(admin_credentials, shared_data):

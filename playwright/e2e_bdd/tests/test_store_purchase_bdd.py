@@ -23,19 +23,6 @@ def admin_logs_in(admin_credentials, shared_data):
         admin_credentials["userPassword"]
     )
 
-@when("the admin adds a product to the cart")
-def admin_adds_product(e2e_checkout_data, shared_data):
-
-    shared_data["product"] = shared_data["dashboard_page"].addProductToCart(e2e_checkout_data["productId"])
-
-@when("the admin opens the cart")
-def admin_opens_cart(shared_data):
-
-    cart_page = shared_data["dashboard_page"].openCart()
-    cart_page.verifyProduct(shared_data["product"])
-    shared_data["total"] = cart_page.getTotal()
-    shared_data["cart_page"] = cart_page
-
 @when("the admin proceeds to checkout")
 def admin_proceeds_to_checkout(shared_data):
 
