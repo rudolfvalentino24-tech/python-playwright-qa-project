@@ -29,10 +29,10 @@ class OrderDetailsPage:
     def verifyCustomer(self, customer):
         customer_name = (f"{customer['firstName']} "f"{customer['lastName']}")
 
-        expect(self.page.get_by_text(f"Customer: {customer_name}")).to_be_visible()
-        expect(self.page.get_by_text(f"Email: {customer['email']}")).to_be_visible()
-        expect(self.page.get_by_text(f"Address: {customer['address']}")).to_be_visible()
-        expect(self.page.get_by_text(f"Country: {customer['country']}")).to_be_visible()
+        expect(self.page.get_by_text(f"Customer: {customer_name}", exact=True)).to_be_visible()
+        expect(self.page.get_by_text(f"Email: {customer['email']}", exact=True)).to_be_visible()
+        expect(self.page.get_by_text(f"Address: {customer['address']}", exact=True)).to_be_visible()
+        expect(self.page.get_by_text(f"Country: {customer['country']}", exact=True)).to_be_visible()
 
     def verifyTotal(self, expected_total):
 

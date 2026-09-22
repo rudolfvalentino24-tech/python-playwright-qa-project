@@ -1516,6 +1516,22 @@ def create_api_order():
     username = identity["username"]
 
     payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Request body must be a JSON object"}), 400
+
+    # Validate before constructing or storing an order; UI validation can be bypassed.
+    customer_fields = ("firstName", "lastName", "email", "address", "country")
+    invalid_fields = [
+        field for field in customer_fields
+        if not isinstance(payload.get(field), str) or not payload[field].strip()
+    ]
+    if invalid_fields:
+        return jsonify({
+            "error": "Required customer fields must be non-empty strings",
+            "fields": invalid_fields,
+        }), 400
+
+    customer = {field: payload[field].strip() for field in customer_fields}
     requested_items = payload.get("items", [])
 
     if not requested_items:
@@ -1558,18 +1574,15 @@ def create_api_order():
 
     order_number = "TEST-" + str(int(time.time() * 1000))
 
-    customer_name = (
-        str(payload.get("firstName", "")).strip() + " " +
-        str(payload.get("lastName", "")).strip()
-    ).strip()
+    customer_name = f"{customer['firstName']} {customer['lastName']}"
 
     order = {
         "order_number": order_number,
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "customer_name": customer_name,
-        "email": str(payload.get("email", "")),
-        "address": str(payload.get("address", "")),
-        "country": str(payload.get("country", "")),
+        "email": customer["email"],
+        "address": customer["address"],
+        "country": customer["country"],
         "items": order_items,
         "total": round(total, 2)
     }

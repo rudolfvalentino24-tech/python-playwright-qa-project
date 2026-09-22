@@ -77,11 +77,10 @@ class DashboardPage:
         for product in products:
             expect(self.page.get_by_test_id(f"price-{product['id']}")).to_have_text(f"€{product['price']:.2f}")
 
-    # Verify that every product has an Add to Cart button
-    def verifyAddToCartButtons(self):
+    # Verify that every expected product has an Add to Cart button
+    def verifyAddToCartButtons(self, products):
         add_buttons = self.page.locator("[data-testid^='add-product-']")
+        expect(add_buttons).to_have_count(len(products))
 
-        assert add_buttons.count() > 0
-
-        for index in range(add_buttons.count()):
-            expect(add_buttons.nth(index)).to_be_visible()
+        for product in products:
+            expect(self.page.get_by_test_id(f"add-product-{product['id']}")).to_be_visible()

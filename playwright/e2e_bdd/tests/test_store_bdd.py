@@ -28,5 +28,5 @@ def product_prices_are_displayed(shared_data, products):
 
 
 @then("each product should have an Add to Cart button")
-def add_to_cart_buttons_are_displayed(shared_data):
-    shared_data["dashboard_page"].verifyAddToCartButtons()
+def add_to_cart_buttons_are_displayed(shared_data, products):
+    shared_data["dashboard_page"].verifyAddToCartButtons(products)

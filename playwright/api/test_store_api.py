@@ -1,4 +1,6 @@
+import json
 import re
+import uuid
 
 import pytest
 
@@ -6,6 +8,30 @@ from utils.config import storeURL
 
 
 pytestmark = pytest.mark.release
+
+CUSTOMER_FIELDS = ("firstName", "lastName", "email", "address", "country")
+
+
+@pytest.fixture
+def customer_validation_payload(order_payload):
+    # A second unique marker lets us find accidental orders even when email is invalid.
+    return {**order_payload, "address": f"Validation Street {uuid.uuid4().hex}"}
+
+
+def assert_order_rejected_without_creation(client, payload, expected_fields):
+    response = client.createOrder(payload)
+    assert response.status == 400, f"Invalid order was accepted (HTTP {response.status})"
+    body = response.json()
+    assert body["error"]
+    assert "orderId" not in body
+    if expected_fields:
+        assert set(body["fields"]) == set(expected_fields)
+
+    # Check this request's unique marker, so unrelated orders do not affect the test.
+    marker_field = "email" if isinstance(payload.get("email"), str) and payload["email"].strip() else "address"
+    orders = client.getOrders()
+    assert orders.status == 200
+    assert all(order[marker_field] != payload[marker_field] for order in orders.json()["orders"])
 
 
 @pytest.fixture
@@ -83,13 +109,65 @@ def test_invalid_order_items_are_rejected(api_clients, order_payload, items, exp
     assert response.json()["error"]
 
 
-@pytest.mark.parametrize("field", ["firstName", "lastName", "email", "address", "country", "items"])
-def test_required_order_data_is_rejected_when_missing(api_clients, order_payload, field):
+@pytest.mark.parametrize("field", [*CUSTOMER_FIELDS, "items"])
+def test_required_order_data_is_rejected_when_missing(api_clients, customer_validation_payload, field):
     """REL-API-ORD-09: required customer/order data must also be validated server-side."""
-    order_payload.pop(field)
-    response = api_clients().createOrder(order_payload)
-    assert response.status == 400, f"Missing {field} was accepted (HTTP {response.status})"
-    assert response.json()["error"]
+    customer_validation_payload.pop(field)
+    assert_order_rejected_without_creation(
+        api_clients(), customer_validation_payload, [field] if field in CUSTOMER_FIELDS else []
+    )
+
+
+@pytest.mark.parametrize("field", CUSTOMER_FIELDS)
+@pytest.mark.parametrize("value", [
+    pytest.param(None, id="null"),
+    pytest.param("", id="empty"),
+    pytest.param(" \t\n ", id="whitespace"),
+    pytest.param(123, id="number"),
+    pytest.param(True, id="boolean"),
+    pytest.param([], id="array"),
+    pytest.param({}, id="object"),
+])
+def test_required_customer_fields_reject_invalid_values(api_clients, customer_validation_payload, field, value):
+    customer_validation_payload[field] = value
+    assert_order_rejected_without_creation(api_clients(), customer_validation_payload, [field])
+
+
+def test_all_invalid_customer_fields_are_reported(api_clients, customer_validation_payload):
+    # Keep email/address markers intact while invalidating multiple other fields.
+    for field in ("firstName", "lastName", "country"):
+        customer_validation_payload.pop(field)
+    assert_order_rejected_without_creation(
+        api_clients(), customer_validation_payload, ["firstName", "lastName", "country"]
+    )
+
+
+def test_valid_customer_fields_are_trimmed(api_clients, order_payload):
+    expected = {field: order_payload[field] for field in CUSTOMER_FIELDS}
+    for field in CUSTOMER_FIELDS:
+        order_payload[field] = f"  {expected[field]}  "
+    client = api_clients()
+    response = client.createOrder(order_payload)
+    assert response.status == 201
+    orders = client.getOrders()
+    assert orders.status == 200
+    matches = [order for order in orders.json()["orders"]
+               if order["order_number"] == response.json()["orderId"]]
+    assert len(matches) == 1
+    order = matches[0]
+    assert order["customer_name"] == f"{expected['firstName']} {expected['lastName']}"
+    for field in ("email", "address", "country"):
+        assert order[field] == expected[field]
+
+
+@pytest.mark.parametrize("payload", [None, ["not", "an", "object"], "not an object"])
+def test_order_body_must_be_a_json_object(api_clients, payload):
+    client = api_clients()
+    response = client.request.post("/api/orders", data=json.dumps(payload), headers={
+        **client.headers, "Content-Type": "application/json",
+    })
+    assert response.status == 400
+    assert response.json()["error"] == "Request body must be a JSON object"
 
 
 @pytest.mark.smoke
