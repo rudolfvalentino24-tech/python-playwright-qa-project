@@ -1,6 +1,7 @@
 from pageObjects.ordersHistory import OrdersHistoryPage
 from playwright.sync_api import expect
 from pageObjects.cart import CartPage
+from utils.config import storeURL
 
 class DashboardPage:
     def __init__(self, page):
@@ -39,6 +40,14 @@ class DashboardPage:
         self.page.get_by_test_id("orders-link").click()
         return OrdersHistoryPage(self.page)
 
-    # Backward-compatible alias for older tests while the typo is being removed.
-    def selectOerdersNaviLink(self):
-        return self.selectOrdersNaviLink()
+    # Verify that login succeeded by checking that the admin was redirected to the Store page
+    def verifyLoginSuccessful(self):
+        expect(self.page).to_have_url(f"{storeURL}/store")
+
+    # Verify that the main Store content is displayed
+    def verifyStorePage(self):
+        expect(self.page.get_by_test_id("cart-link")).to_be_visible()
+        expect(self.page.get_by_test_id("orders-link")).to_be_visible()
+
+    def logout(self):
+        self.page.get_by_test_id("logout-button").click()
