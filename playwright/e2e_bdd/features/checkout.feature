@@ -1,5 +1,7 @@
 Feature: Checkout
   Validate checkout information and totals before creating an order
+  # CHECK-01, CHECK-02 and CHECK-05 are covered by E2E-001 in storePurchase.feature.
+  # See COVERAGE.md for the complete plan-to-test mapping.
 
   Scenario Outline: CHECK-03 Required customer fields are validated
     Given the admin has added a product to the cart

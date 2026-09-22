@@ -13,8 +13,18 @@ class OrderDetailsPage:
         expect(self.page.get_by_test_id("order-details-number")).to_have_text(self.order_id)
 
     def verifyProduct(self, product):
+        rows = self.page.get_by_test_id("order-details-table").locator("tbody tr")
+        row = rows.filter(has=self.page.get_by_role("cell", name=product["name"], exact=True))
+        quantity = product.get("quantity", 1)
+        expect(row.locator("td")).to_have_text([
+            product["name"], str(quantity), f"€{product['price']:.2f}",
+            f"€{product['price'] * quantity:.2f}",
+        ])
 
-        expect(self.page.get_by_test_id("order-details-table")).to_contain_text(product["name"])
+    def verifyProducts(self, products):
+        expect(self.page.get_by_test_id("order-details-table").locator("tbody tr")).to_have_count(len(products))
+        for product in products:
+            self.verifyProduct(product)
 
     def verifyCustomer(self, customer):
         customer_name = (f"{customer['firstName']} "f"{customer['lastName']}")
@@ -26,4 +36,13 @@ class OrderDetailsPage:
 
     def verifyTotal(self, expected_total):
 
-        expect(self.page.get_by_test_id("order-details-total")).to_contain_text(f"€{expected_total:.2f}")
+        expect(self.page.get_by_test_id("order-details-total")).to_have_text(f"Total: €{expected_total:.2f}")
+
+    def deleteOrder(self):
+        self.verifyOrderNumber()
+        self.page.once("dialog", lambda dialog: dialog.accept())
+        self.page.get_by_test_id("delete-order").click()
+
+    def verifyReadOnly(self):
+        self.verifyOrderNumber()
+        expect(self.page.get_by_test_id("delete-order")).to_have_count(0)

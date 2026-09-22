@@ -8,6 +8,7 @@ def admin_on_login_page(browserInstance, shared_data):
 
     login_page = LoginPage(browserInstance)
     login_page.navigate()
+    login_page.verifyLoginPage()
     shared_data["login_page"] = login_page
 
 @when("the admin logs in")
@@ -17,41 +18,6 @@ def admin_logs_in(admin_credentials, shared_data):
         admin_credentials["userEmail"],
         admin_credentials["userPassword"]
     )
-
-@when("the admin places the order")
-def admin_places_order(shared_data):
-
-    shared_data["confirmation_page"] = (shared_data["checkout_page"].placeOrder())
-
-@then("the order should be created successfully")
-def order_created_successfully(shared_data):
-
-    shared_data["confirmation_page"].verifyOrderSuccess()
-
-@then("an order number should be displayed")
-def order_number_displayed(shared_data):
-
-    shared_data["order_id"] = (shared_data["confirmation_page"].getOrderNumber())
-
-@when("the admin navigates to order history")
-def navigate_to_order_history(shared_data):
-
-    shared_data["orders_page"] = (shared_data["confirmation_page"].openOrderHistory())
-
-@then("the created order should appear in the order history")
-def created_order_appears(shared_data):
-
-    shared_data["orders_page"].verifyOrderExists(shared_data["order_id"])
-
-@when("the admin opens the created order")
-def open_created_order(shared_data):
-
-    shared_data["details_page"] = (shared_data["orders_page"].selectOrder(shared_data["order_id"]))
-
-@then("the correct order number should be displayed")
-def verify_order_number(shared_data):
-
-    shared_data["details_page"].verifyOrderNumber()
 
 @then("the correct product should be displayed")
 def verify_product(shared_data):

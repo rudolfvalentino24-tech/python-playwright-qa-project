@@ -55,22 +55,27 @@ class DashboardPage:
         assert product_names.count() == add_buttons.count()
 
     # Verify that every product has a visible product name
-    def verifyProductNames(self):
+    def verifyProductNames(self, products):
         product_names = self.page.locator("[data-testid^='product-name-']")
 
         assert product_names.count() > 0
 
         for index in range(product_names.count()):
             expect(product_names.nth(index)).to_be_visible()
+        expect(product_names).to_have_count(len(products))
+        for product in products:
+            expect(self.page.get_by_test_id(f"product-name-{product['id']}")).to_have_text(product["name"])
 
     # Verify that every product has a visible price
-    def verifyProductPrices(self):
+    def verifyProductPrices(self, products):
         product_prices = self.page.locator("[data-testid^='price-']")
 
         assert product_prices.count() > 0
 
         for index in range(product_prices.count()):
             expect(product_prices.nth(index)).to_be_visible()
+        for product in products:
+            expect(self.page.get_by_test_id(f"price-{product['id']}")).to_have_text(f"€{product['price']:.2f}")
 
     # Verify that every product has an Add to Cart button
     def verifyAddToCartButtons(self):

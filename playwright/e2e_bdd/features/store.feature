@@ -6,6 +6,7 @@ Feature: Store
     When the admin logs in with valid credentials
     Then the Store page should be displayed
 
+  @smoke
   Scenario: STORE-02 Products are displayed
     Given the admin is logged in
     Then the products should be displayed

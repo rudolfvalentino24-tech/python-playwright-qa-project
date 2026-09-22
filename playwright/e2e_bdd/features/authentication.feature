@@ -31,3 +31,19 @@ Feature: Authentication
     And the admin logs out
     Then the login page should be displayed
     And the user should no longer be authenticated
+
+  Scenario: REL-UI-AUTH-02 Second admin logs in successfully
+    Given the user is on the login page
+    When the second admin logs in
+    Then the Store page should be displayed
+
+  Scenario Outline: <case_id> Missing <field> is validated
+    Given the user is on the login page
+    When the admin submits login without "<field>"
+    Then the login page should be displayed
+    And the login "<field>" field should be required
+
+    Examples:
+      | case_id        | field    |
+      | REL-UI-AUTH-06 | Username |
+      | REL-UI-AUTH-07 | Password |

@@ -18,13 +18,13 @@ def products_are_displayed(shared_data):
     shared_data["dashboard_page"].verifyProductsDisplayed()
 
 @then("each product should display its name")
-def product_names_are_displayed(shared_data):
-    shared_data["dashboard_page"].verifyProductNames()
+def product_names_are_displayed(shared_data, products):
+    shared_data["dashboard_page"].verifyProductNames(products)
 
 
 @then("each product should display its price")
-def product_prices_are_displayed(shared_data):
-    shared_data["dashboard_page"].verifyProductPrices()
+def product_prices_are_displayed(shared_data, products):
+    shared_data["dashboard_page"].verifyProductPrices(products)
 
 
 @then("each product should have an Add to Cart button")
