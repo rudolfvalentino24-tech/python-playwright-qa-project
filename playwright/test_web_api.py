@@ -28,4 +28,4 @@ def test_E2E_web_api(
     order_details_page = order_history_page.selectOrder(order_id)
 
     # Verify the correct order details page is displayed.
-    order_details_page.verifyOrderMessage()
+    order_details_page.verifyOrderNumber()

@@ -16,3 +16,7 @@ class OrdersHistoryPage:
         view_order_button.click()
 
         return OrderDetailsPage(self.page, order_id)
+
+    def verifyOrderExists(self, order_id):
+
+        expect(self.page.get_by_test_id(f"view-order-{order_id}")).to_be_visible()

@@ -47,4 +47,4 @@ def select_order_id(shared_data):
 @then('order message is successfully displayed')
 def order_message_successfully_displayed(shared_data):
     oderDetailsPage = shared_data['orderDetails_page']
-    oderDetailsPage.verifyOrderMessage()
+    oderDetailsPage.verifyOrderNumber()
