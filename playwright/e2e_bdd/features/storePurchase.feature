@@ -7,7 +7,8 @@ Feature: Store purchase
     And the admin adds a product to the cart
     And the admin opens the cart
     And the admin proceeds to checkout
-    And the admin enters valid checkout information
+    Then the checkout page should be displayed
+    When the admin enters valid checkout information
     And the admin places the order
     Then the order should be created successfully
     And an order number should be displayed

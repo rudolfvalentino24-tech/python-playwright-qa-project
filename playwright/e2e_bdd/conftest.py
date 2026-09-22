@@ -71,3 +71,21 @@ def admin_adds_product(e2e_checkout_data, shared_data):
 @when("the admin opens the cart")
 def admin_opens_cart(shared_data):
     shared_data["cart_page"] = shared_data["dashboard_page"].openCart()
+
+
+@when("the admin proceeds to checkout")
+def admin_proceeds_to_checkout(shared_data):
+    shared_data["total"] = shared_data["cart_page"].getTotal()
+    shared_data["checkout_page"] = shared_data["cart_page"].proceedToCheckout()
+
+
+@then("the checkout page should be displayed")
+def checkout_page_is_displayed(shared_data):
+    shared_data["checkout_page"].verifyCheckoutPage()
+
+
+@when("the admin enters valid checkout information")
+def admin_enters_checkout_information(e2e_checkout_data, shared_data):
+    shared_data["checkout_page"].enterCheckoutInformation(
+        e2e_checkout_data["customer"], e2e_checkout_data["payment"]
+    )

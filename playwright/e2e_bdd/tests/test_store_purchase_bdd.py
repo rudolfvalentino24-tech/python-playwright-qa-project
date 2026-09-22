@@ -1,12 +1,7 @@
-import pytest
 from pytest_bdd import given, when, then, scenarios
 from pageObjects.login import LoginPage
 
 scenarios("../features/storePurchase.feature")
-
-@pytest.fixture
-def shared_data():
-    return {}
 
 @given("the admin is on the login page")
 def admin_on_login_page(browserInstance, shared_data):
@@ -22,16 +17,6 @@ def admin_logs_in(admin_credentials, shared_data):
         admin_credentials["userEmail"],
         admin_credentials["userPassword"]
     )
-
-@when("the admin proceeds to checkout")
-def admin_proceeds_to_checkout(shared_data):
-    shared_data["total"] = shared_data["cart_page"].getTotal()
-    shared_data["checkout_page"] = shared_data["cart_page"].proceedToCheckout()
-
-@when("the admin enters valid checkout information")
-def admin_enters_checkout_information(e2e_checkout_data, shared_data):
-
-    shared_data["checkout_page"].enterCheckoutInformation(e2e_checkout_data["customer"],e2e_checkout_data["payment"])
 
 @when("the admin places the order")
 def admin_places_order(shared_data):

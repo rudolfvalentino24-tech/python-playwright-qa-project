@@ -11,7 +11,7 @@ class CartPage:
     def verifyProduct(self, product):
         cart_item = self.page.get_by_test_id(f"cart-item-{product['id']}")
         expect(cart_item).to_be_visible()
-        expect(cart_item).to_contain_text(product["name"])
+        expect(cart_item.locator("h3")).to_have_text(product["name"])
 
     # Verify that all selected products are displayed in the cart
     def verifyProducts(self, products):
@@ -21,12 +21,12 @@ class CartPage:
     # Verify the correct product name
     def verifyProductName(self, product):
         cart_item = self.page.get_by_test_id(f"cart-item-{product['id']}")
-        expect(cart_item).to_contain_text(product["name"])
+        expect(cart_item.locator("h3")).to_have_text(product["name"])
 
     # Verify the correct product price
     def verifyProductPrice(self, product):
         cart_item = self.page.get_by_test_id(f"cart-item-{product['id']}")
-        expect(cart_item).to_contain_text(f"€{product['price']:.2f}")
+        expect(cart_item.locator(".info p")).to_have_text(f"€{product['price']:.2f} each")
 
     # Return the displayed cart total as a number
     def getTotal(self):
