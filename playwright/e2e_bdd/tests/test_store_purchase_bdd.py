@@ -25,8 +25,8 @@ def admin_logs_in(admin_credentials, shared_data):
 
 @when("the admin proceeds to checkout")
 def admin_proceeds_to_checkout(shared_data):
-
-    shared_data["checkout_page"] = (shared_data["cart_page"].proceedToCheckout())
+    shared_data["total"] = shared_data["cart_page"].getTotal()
+    shared_data["checkout_page"] = shared_data["cart_page"].proceedToCheckout()
 
 @when("the admin enters valid checkout information")
 def admin_enters_checkout_information(e2e_checkout_data, shared_data):
