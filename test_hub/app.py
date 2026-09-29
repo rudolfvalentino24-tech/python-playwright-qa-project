@@ -38,6 +38,7 @@ db = SQLAlchemy(app)
 PRIORITIES = {"Low", "Medium", "High", "Critical"}
 TYPES = {"Manual", "Automated"}
 STATUSES = {"Draft", "Ready", "Passed", "Failed", "Blocked"}
+RESULT_STATUSES = {"Passed", "Failed", "Blocked", "Skipped"}
 JIRA_KEY_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*-\d+$")
 CASE_KEY_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9_-]{2,63}$")
 
@@ -79,6 +80,11 @@ class TestCase(db.Model):
         back_populates="test_case",
         cascade="all, delete-orphan",
         order_by="TestCaseJiraLink.jira_key",
+    )
+    results = db.relationship(
+        "TestResult",
+        back_populates="test_case",
+        order_by="TestResult.executed_at.desc()",
     )
 
     @property
@@ -143,6 +149,69 @@ class TestCaseJiraLink(db.Model):
     test_case = db.relationship("TestCase", back_populates="jira_links")
 
 
+class TestRun(db.Model):
+    __tablename__ = "test_runs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(250), nullable=False)
+    execution_type = db.Column(db.String(20), nullable=False, default="Manual")
+    environment = db.Column(db.String(80), nullable=False, default="")
+    started_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    finished_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    results = db.relationship(
+        "TestResult",
+        back_populates="test_run",
+        cascade="all, delete-orphan",
+        order_by="TestResult.executed_at",
+    )
+
+
+class TestResult(db.Model):
+    __tablename__ = "test_results"
+
+    id = db.Column(db.Integer, primary_key=True)
+    test_run_id = db.Column(
+        db.Integer,
+        db.ForeignKey("test_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    test_case_id = db.Column(
+        db.Integer,
+        db.ForeignKey("test_cases.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    result = db.Column(db.String(20), nullable=False, index=True)
+    executed_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+    duration_ms = db.Column(db.Integer, nullable=True)
+    notes = db.Column(db.Text, nullable=False, default="")
+    error_message = db.Column(db.Text, nullable=False, default="")
+
+    # Immutable snapshots keep old reports accurate if a test case is renamed later.
+    case_key_snapshot = db.Column(db.String(64), nullable=False)
+    case_title_snapshot = db.Column(db.String(250), nullable=False)
+    feature_snapshot = db.Column(db.String(120), nullable=False)
+
+    test_run = db.relationship("TestRun", back_populates="results")
+    test_case = db.relationship("TestCase", back_populates="results")
+
+
 def normalize_lines(value):
     return [line.strip() for line in value.splitlines() if line.strip()]
 
@@ -197,6 +266,26 @@ def set_jira_links(case, jira_keys):
     for jira_key in jira_keys:
         if jira_key not in existing_keys:
             case.jira_links.append(TestCaseJiraLink(jira_key=jira_key))
+
+
+def test_case_execution_stats(case):
+    counts = {status: 0 for status in RESULT_STATUSES}
+    for result in case.results:
+        if result.result in counts:
+            counts[result.result] += 1
+
+    total = sum(counts.values())
+    decided = counts["Passed"] + counts["Failed"]
+    pass_rate = round((counts["Passed"] / decided) * 100, 1) if decided else 0
+
+    return {
+        "total": total,
+        "passed": counts["Passed"],
+        "failed": counts["Failed"],
+        "blocked": counts["Blocked"],
+        "skipped": counts["Skipped"],
+        "pass_rate": pass_rate,
+    }
 
 
 def jira_api_request(path, method="GET", body=None):
@@ -498,7 +587,7 @@ button:hover,.button-link:hover{transform:translateY(-1px)}
                    data-status="{{ c.status }}">
             <div class="case-head">
               <div>
-                <div class="case-title">{{ c.case_key }} — {{ c.title }}</div>
+                <div class="case-title"><a href="{{ url_for('test_case_details', case_key=c.case_key) }}" style="color:inherit;text-decoration:none">{{ c.case_key }} — {{ c.title }}</a></div>
                 <div class="meta">
                   <span class="pill">{{ c.type }}</span>
                   <span class="pill">{{ c.priority }}</span>
@@ -809,7 +898,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 
   {% for c in cases %}
     <article class="case">
-      <div class="title">{{ c.case_key }} — {{ c.title }}</div>
+      <div class="title"><a href="{{ url_for('test_case_details', case_key=c.case_key) }}" style="color:inherit;text-decoration:none">{{ c.case_key }} — {{ c.title }}</a></div>
       <div class="feature">Feature: {{ c.feature_name }}</div>
       <div class="meta">
         <span class="pill">{{ c.type }}</span>
@@ -833,6 +922,101 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   {% else %}
     <div class="empty">No test cases are linked to {{ jira_key }} yet.</div>
   {% endfor %}
+</main>
+</body>
+</html>
+"""
+
+
+CASE_PAGE_HTML = """
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ case.case_key }} - Test Hub</title>
+<style>
+:root{--bg:#eef3fb;--surface:rgba(255,255,255,.95);--text:#111827;--muted:#6b7280;--border:#d7dfec;--accent:#2f66e8;--accent2:#2475ff;--danger:#b42318;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;color:var(--text);background:radial-gradient(circle at 8% 5%,rgba(98,134,255,.17),transparent 28%),radial-gradient(circle at 94% 16%,rgba(36,117,255,.11),transparent 24%),linear-gradient(180deg,#f8faff,#eef3fb)}
+header{display:flex;align-items:center;justify-content:space-between;padding:16px 30px;background:rgba(20,42,82,.94);color:#fff;box-shadow:0 10px 30px rgba(24,47,90,.14)}
+.brand{display:flex;align-items:center;gap:12px}.brand-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#6286ff,#1f63f2);box-shadow:0 8px 22px rgba(37,99,235,.3)}.brand strong{font-size:20px}.brand span{display:block;font-size:12px;opacity:.7;margin-top:2px}
+.wrap{max-width:1100px;margin:0 auto;padding:32px 22px 50px}.top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:20px}.top h1{margin:0;font-size:29px;letter-spacing:-.55px;color:#172b4d}.subtitle{margin-top:5px;color:var(--muted)}
+.actions{display:flex;gap:9px;flex-wrap:wrap}.button,button{display:inline-block;border:0;border-radius:10px;padding:10px 14px;text-decoration:none;font:inherit;font-weight:750;cursor:pointer}.button{background:#eef2f7;color:#20324f}.primary{background:linear-gradient(90deg,#2f66e8,#2475ff);color:#fff;box-shadow:0 8px 18px rgba(37,99,235,.2)}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}.stat{padding:16px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:0 10px 28px rgba(35,61,108,.06)}.stat strong{display:block;font-size:26px;color:#17325d}.stat span{display:block;margin-top:5px;font-size:12px;font-weight:650;color:var(--muted)}
+.grid{display:grid;grid-template-columns:1.25fr .75fr;gap:18px}.card{padding:21px;border:1px solid var(--border);border-radius:18px;background:var(--surface);box-shadow:0 16px 42px rgba(35,61,108,.07)}.card h2{margin:0 0 14px;font-size:19px;color:#172b4d}
+.meta{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:15px}.pill{font-size:12px;padding:4px 8px;border-radius:999px;background:#eef2f7;color:#526174;font-weight:650}.jira{color:#2468e5;text-decoration:none;font-weight:800;padding:3px 7px;border-radius:7px;background:#edf4ff}
+.details{margin-top:9px;color:#607088;font-size:14px;line-height:1.5;white-space:pre-wrap}.details strong{color:#354963}
+label{display:block;margin:13px 0 6px;font-size:12px;font-weight:800;color:#41526c}select,input,textarea{width:100%;border:1px solid #ccd5e4;border-radius:11px;background:#fff;color:var(--text);font:inherit;outline:none}select,input{height:45px;padding:0 12px}textarea{min-height:90px;padding:10px 12px;resize:vertical}select:focus,input:focus,textarea:focus{border-color:#3b73ef;box-shadow:0 0 0 4px rgba(59,115,239,.12)}
+.history{margin-top:20px}.result-row{display:grid;grid-template-columns:105px 1fr 120px 150px;gap:12px;align-items:center;padding:13px 0;border-top:1px solid #e7ebf2}.result-row:first-of-type{border-top:0}.result-badge{display:inline-block;width:max-content;padding:5px 8px;border-radius:999px;font-size:12px;font-weight:800}.Passed{background:#dcfce7;color:#166534}.Failed{background:#fee2e2;color:#991b1b}.Blocked{background:#fef3c7;color:#92400e}.Skipped{background:#e5e7eb;color:#4b5563}.result-main{font-size:13px;color:#526174}.result-main strong{display:block;color:#243854;font-size:14px}.result-date{font-size:12px;color:var(--muted)}.empty{padding:28px;text-align:center;color:var(--muted)}
+@media(max-width:780px){header{padding:13px 16px}.wrap{padding:22px 14px}.top{flex-direction:column}.stats{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.result-row{grid-template-columns:90px 1fr}.result-date{grid-column:2}}
+</style>
+</head>
+<body>
+<header><div class="brand"><div class="brand-icon">🧪</div><div><strong>Test Hub</strong><span>QA test case management</span></div></div></header>
+<main class="wrap">
+  <div class="top">
+    <div><h1>{{ case.case_key }} — {{ case.title }}</h1><div class="subtitle">{{ case.feature_name }} · execution history</div></div>
+    <div class="actions">
+      <a class="button" href="{{ url_for('index') }}">All test cases</a>
+      <a class="button" href="{{ url_for('edit_case', case_key=case.case_key) }}">Edit test case</a>
+    </div>
+  </div>
+
+  <section class="stats">
+    <div class="stat"><strong>{{ stats.total }}</strong><span>Total executions</span></div>
+    <div class="stat"><strong>{{ stats.passed }}</strong><span>Passed</span></div>
+    <div class="stat"><strong>{{ stats.failed }}</strong><span>Failed</span></div>
+    <div class="stat"><strong>{{ stats.blocked }}</strong><span>Blocked</span></div>
+    <div class="stat"><strong>{{ stats.pass_rate }}%</strong><span>Pass rate</span></div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <h2>Test case</h2>
+      <div class="meta">
+        <span class="pill">{{ case.type }}</span><span class="pill">{{ case.priority }}</span><span class="pill">{{ case.status }}</span>
+        {% for jira_key in case.jira_keys %}<a class="jira" href="{{ url_for('jira_story_cases', jira_key=jira_key) }}">{{ jira_key }}</a>{% endfor %}
+      </div>
+      {% if case.preconditions %}<div class="details"><strong>Preconditions:</strong> {{ case.preconditions }}</div>{% endif %}
+      <div class="details"><strong>Steps:</strong>
+{% for step in case.steps %}{{ loop.index }}. {{ step.action }}{% if not loop.last %}
+{% endif %}{% endfor %}</div>
+      <div class="details"><strong>Expected result:</strong> {{ case.expected_result }}</div>
+    </div>
+
+    <aside class="card">
+      <h2>Record result</h2>
+      <form method="post" action="{{ url_for('record_test_result', case_key=case.case_key) }}">
+        <label>Result</label>
+        <select name="result" required>
+          <option>Passed</option><option>Failed</option><option>Blocked</option><option>Skipped</option>
+        </select>
+        <label>Environment</label>
+        <input name="environment" placeholder="Staging, Production, Local...">
+        <label>Notes</label>
+        <textarea name="notes" placeholder="Optional execution notes"></textarea>
+        <button class="primary" style="margin-top:14px" type="submit">Record result</button>
+      </form>
+    </aside>
+  </section>
+
+  <section class="card history">
+    <h2>Execution history</h2>
+    {% for result in results %}
+      <div class="result-row">
+        <span class="result-badge {{ result.result }}">{{ result.result }}</span>
+        <div class="result-main">
+          <strong>{{ result.case_key_snapshot }} — {{ result.case_title_snapshot }}</strong>
+          {{ result.test_run.name }}{% if result.test_run.environment %} · {{ result.test_run.environment }}{% endif %}
+          {% if result.notes %}<div>{{ result.notes }}</div>{% endif %}
+        </div>
+        <div class="result-date">{{ result.test_run.execution_type }}</div>
+        <div class="result-date">{{ result.executed_at.strftime('%d %b %Y %H:%M') }}</div>
+      </div>
+    {% else %}
+      <div class="empty">No execution history yet. Record the first result above.</div>
+    {% endfor %}
+  </section>
 </main>
 </body>
 </html>
@@ -1140,6 +1324,67 @@ def create_case():
     return redirect(url_for("index"))
 
 
+@app.get("/test-cases/<case_key>")
+def test_case_details(case_key):
+    case = db.session.scalar(
+        db.select(TestCase).where(TestCase.case_key == case_key)
+    )
+    if case is None:
+        return "Test case not found.", 404
+
+    results = db.session.scalars(
+        db.select(TestResult)
+        .where(TestResult.test_case_id == case.id)
+        .order_by(TestResult.executed_at.desc())
+    ).all()
+
+    return render_template_string(
+        CASE_PAGE_HTML,
+        case=case,
+        results=results,
+        stats=test_case_execution_stats(case),
+    )
+
+
+@app.post("/test-cases/<case_key>/results")
+def record_test_result(case_key):
+    case = db.session.scalar(
+        db.select(TestCase).where(TestCase.case_key == case_key)
+    )
+    if case is None:
+        return "Test case not found.", 404
+
+    result_value = request.form.get("result", "").strip()
+    environment = request.form.get("environment", "").strip()
+    notes = request.form.get("notes", "").strip()
+
+    if result_value not in RESULT_STATUSES:
+        return "Invalid execution result.", 400
+
+    executed_at = datetime.now(timezone.utc)
+    test_run = TestRun(
+        name=f"Manual execution — {case.case_key}",
+        execution_type="Manual",
+        environment=environment,
+        started_at=executed_at,
+        finished_at=executed_at,
+    )
+    test_result = TestResult(
+        test_run=test_run,
+        test_case=case,
+        result=result_value,
+        executed_at=executed_at,
+        notes=notes,
+        case_key_snapshot=case.case_key,
+        case_title_snapshot=case.title,
+        feature_snapshot=case.feature_name,
+    )
+
+    db.session.add(test_result)
+    db.session.commit()
+    return redirect(url_for("test_case_details", case_key=case.case_key))
+
+
 @app.get("/test-cases/<case_key>/edit")
 def edit_case(case_key):
     case = db.session.scalar(
@@ -1270,7 +1515,12 @@ def api_jira_stories():
 @app.get("/api/test-cases")
 def api_test_cases():
     cases = db.session.scalars(db.select(TestCase).order_by(TestCase.id)).all()
-    return jsonify([case.to_dict() for case in cases])
+    payload = []
+    for case in cases:
+        item = case.to_dict()
+        item["execution_stats"] = test_case_execution_stats(case)
+        payload.append(item)
+    return jsonify(payload)
 
 
 @app.get("/api/jira/<jira_key>/test-cases")
