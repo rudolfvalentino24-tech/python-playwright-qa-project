@@ -119,6 +119,8 @@ def _report_result(report, result):
             "case_key": case_id,
             "result": result,
             "duration_ms": round(report.duration * 1000),
+            "build_number": JENKINS_BUILD_NUMBER,
+            "build_url": JENKINS_BUILD_URL,
             "error_message": error_message[-12000:],
         },
     )
