@@ -1,16 +1,28 @@
 from pathlib import Path
 from flask import Flask, jsonify, redirect, render_template_string, request, url_for
-import json
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text
 import os
 import re
 from datetime import datetime, timezone
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_FILE = BASE_DIR / "test_cases.json"
 JIRA_BASE_URL = os.environ.get("JIRA_BASE_URL", "https://qa-test-store.atlassian.net/browse")
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "test-hub-dev-secret")
+
+database_url = os.environ.get("DATABASE_URL", f"sqlite:///{BASE_DIR / 'test_hub.db'}")
+if database_url.startswith("postgresql://"):
+    database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+elif database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql+psycopg://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
+
+db = SQLAlchemy(app)
 
 PRIORITIES = {"Low", "Medium", "High", "Critical"}
 TYPES = {"Manual", "Automated"}
@@ -18,30 +30,88 @@ STATUSES = {"Draft", "Ready", "Passed", "Failed", "Blocked"}
 JIRA_KEY_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*-\d+$")
 
 
-def load_cases():
-    if not DATA_FILE.exists():
-        DATA_FILE.write_text("[]", encoding="utf-8")
-    try:
-        return json.loads(DATA_FILE.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
+class TestCase(db.Model):
+    __tablename__ = "test_cases"
+
+    id = db.Column(db.Integer, primary_key=True)
+    case_key = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    title = db.Column(db.String(250), nullable=False)
+    jira_key = db.Column(db.String(50), nullable=True, index=True)
+    priority = db.Column(db.String(20), nullable=False, default="Medium")
+    type = db.Column(db.String(20), nullable=False, default="Manual")
+    status = db.Column(db.String(20), nullable=False, default="Draft", index=True)
+    preconditions = db.Column(db.Text, nullable=False, default="")
+    expected_result = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    steps = db.relationship(
+        "TestStep",
+        back_populates="test_case",
+        cascade="all, delete-orphan",
+        order_by="TestStep.position",
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.case_key,
+            "title": self.title,
+            "jira_key": self.jira_key or "",
+            "priority": self.priority,
+            "type": self.type,
+            "status": self.status,
+            "preconditions": self.preconditions,
+            "steps": [step.action for step in self.steps],
+            "expected_result": self.expected_result,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
 
 
-def save_cases(cases):
-    DATA_FILE.write_text(json.dumps(cases, indent=2, ensure_ascii=False), encoding="utf-8")
+class TestStep(db.Model):
+    __tablename__ = "test_steps"
+
+    id = db.Column(db.Integer, primary_key=True)
+    test_case_id = db.Column(db.Integer, db.ForeignKey("test_cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    position = db.Column(db.Integer, nullable=False)
+    action = db.Column(db.Text, nullable=False)
+
+    test_case = db.relationship("TestCase", back_populates="steps")
 
 
-def next_case_id(cases):
+def normalize_lines(value):
+    return [line.strip() for line in value.splitlines() if line.strip()]
+
+
+def next_case_key():
     numbers = []
-    for case in cases:
-        match = re.match(r"TC-(\d+)$", case.get("id", ""))
+    for (case_key,) in db.session.execute(db.select(TestCase.case_key)).all():
+        match = re.match(r"TC-(\d+)$", case_key or "")
         if match:
             numbers.append(int(match.group(1)))
     return f"TC-{max(numbers, default=0) + 1:03d}"
 
 
-def normalize_lines(value):
-    return [line.strip() for line in value.splitlines() if line.strip()]
+def seed_initial_case():
+    if db.session.scalar(db.select(TestCase.id).limit(1)) is not None:
+        return
+
+    case = TestCase(
+        case_key="TC-001",
+        title="Eye icon appears when password field receives focus",
+        jira_key="SCRUM-5",
+        priority="High",
+        type="Manual",
+        status="Ready",
+        preconditions="User is on the login page and the password field is not focused.",
+        expected_result="The eye icon becomes visible while the password field has focus.",
+    )
+    case.steps = [
+        TestStep(position=1, action="Click the password field or reach it using the Tab key."),
+        TestStep(position=2, action="Observe the password field."),
+    ]
+    db.session.add(case)
+    db.session.commit()
 
 
 PAGE_HTML = """
@@ -52,7 +122,7 @@ PAGE_HTML = """
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Test Hub</title>
 <style>
-:root{--bg:#f4f6f8;--surface:#fff;--text:#172b4d;--muted:#6b778c;--border:#dfe1e6;--accent:#0c66e4;--accent2:#0055cc;--danger:#ae2a19;--ok:#216e4e}
+:root{--bg:#f4f6f8;--surface:#fff;--text:#172b4d;--muted:#6b778c;--border:#dfe1e6;--accent:#0c66e4;--accent2:#0055cc;--danger:#ae2a19}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;background:var(--bg);color:var(--text)}
 header{background:#172b4d;color:#fff;padding:18px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px;position:sticky;top:0;z-index:5}
 .brand{display:flex;align-items:center;gap:12px}.brand h1{font-size:22px;margin:0}.brand span{font-size:13px;opacity:.75}
@@ -87,14 +157,14 @@ button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:60
       </div>
       <div id="caseList">
       {% for c in cases %}
-        <article class="case" data-search="{{ (c.id ~ ' ' ~ c.title ~ ' ' ~ c.jira_key)|lower }}" data-type="{{ c.type }}" data-status="{{ c.status }}">
-          <div class="case-head"><div><div class="case-title">{{ c.id }} — {{ c.title }}</div><div class="meta"><span class="pill">{{ c.type }}</span><span class="pill">{{ c.priority }}</span><span class="pill">{{ c.status }}</span>{% if c.jira_key %}<a class="jira" target="_blank" rel="noopener" href="{{ jira_base }}/{{ c.jira_key }}">{{ c.jira_key }}</a>{% endif %}</div></div></div>
+        <article class="case" data-search="{{ (c.case_key ~ ' ' ~ c.title ~ ' ' ~ (c.jira_key or ''))|lower }}" data-type="{{ c.type }}" data-status="{{ c.status }}">
+          <div class="case-head"><div><div class="case-title">{{ c.case_key }} — {{ c.title }}</div><div class="meta"><span class="pill">{{ c.type }}</span><span class="pill">{{ c.priority }}</span><span class="pill">{{ c.status }}</span>{% if c.jira_key %}<a class="jira" target="_blank" rel="noopener" href="{{ jira_base }}/{{ c.jira_key }}">{{ c.jira_key }}</a>{% endif %}</div></div></div>
           {% if c.preconditions %}<div class="details"><strong>Preconditions:</strong> {{ c.preconditions }}</div>{% endif %}
-          <div class="details"><strong>Steps:</strong>\n{% for step in c.steps %}{{ loop.index }}. {{ step }}{% if not loop.last %}\n{% endif %}{% endfor %}</div>
+          <div class="details"><strong>Steps:</strong>\n{% for step in c.steps %}{{ loop.index }}. {{ step.action }}{% if not loop.last %}\n{% endif %}{% endfor %}</div>
           <div class="details" style="margin-top:7px"><strong>Expected:</strong> {{ c.expected_result }}</div>
           <div class="actions">
-            <form method="post" action="{{ url_for('set_status', case_id=c.id) }}" style="display:flex;gap:6px"><select name="status" style="width:auto">{% for s in statuses %}<option value="{{ s }}" {% if s == c.status %}selected{% endif %}>{{ s }}</option>{% endfor %}</select><button class="secondary">Update</button></form>
-            <form method="post" action="{{ url_for('delete_case', case_id=c.id) }}" onsubmit="return confirm('Delete {{ c.id }}?')"><button class="danger">Delete</button></form>
+            <form method="post" action="{{ url_for('set_status', case_key=c.case_key) }}" style="display:flex;gap:6px"><select name="status" style="width:auto">{% for s in statuses %}<option value="{{ s }}" {% if s == c.status %}selected{% endif %}>{{ s }}</option>{% endfor %}</select><button class="secondary">Update</button></form>
+            <form method="post" action="{{ url_for('delete_case', case_key=c.case_key) }}" onsubmit="return confirm('Delete {{ c.case_key }}?')"><button class="danger">Delete</button></form>
           </div>
         </article>
       {% else %}<div class="empty">No test cases yet. Create the first one on the right.</div>{% endfor %}
@@ -134,12 +204,12 @@ function filterCases(){
 
 @app.get("/")
 def index():
-    cases = load_cases()
+    cases = db.session.scalars(db.select(TestCase).order_by(TestCase.id.desc())).all()
     stats = {
         "total": len(cases),
-        "manual": sum(1 for c in cases if c.get("type") == "Manual"),
-        "automated": sum(1 for c in cases if c.get("type") == "Automated"),
-        "ready": sum(1 for c in cases if c.get("status") == "Ready"),
+        "manual": sum(1 for c in cases if c.type == "Manual"),
+        "automated": sum(1 for c in cases if c.type == "Automated"),
+        "ready": sum(1 for c in cases if c.status == "Ready"),
     }
     return render_template_string(
         PAGE_HTML,
@@ -152,7 +222,6 @@ def index():
 
 @app.post("/test-cases")
 def create_case():
-    cases = load_cases()
     title = request.form.get("title", "").strip()
     jira_key = request.form.get("jira_key", "").strip().upper()
     priority = request.form.get("priority", "Medium").strip()
@@ -169,57 +238,64 @@ def create_case():
     if priority not in PRIORITIES or case_type not in TYPES or status not in STATUSES:
         return "Invalid test case metadata.", 400
 
-    now = datetime.now(timezone.utc).isoformat()
-    cases.append({
-        "id": next_case_id(cases),
-        "title": title,
-        "jira_key": jira_key,
-        "priority": priority,
-        "type": case_type,
-        "status": status,
-        "preconditions": preconditions,
-        "steps": steps,
-        "expected_result": expected_result,
-        "created_at": now,
-        "updated_at": now,
-    })
-    save_cases(cases)
+    case = TestCase(
+        case_key=next_case_key(),
+        title=title,
+        jira_key=jira_key or None,
+        priority=priority,
+        type=case_type,
+        status=status,
+        preconditions=preconditions,
+        expected_result=expected_result,
+    )
+    case.steps = [TestStep(position=index, action=action) for index, action in enumerate(steps, start=1)]
+    db.session.add(case)
+    db.session.commit()
     return redirect(url_for("index"))
 
 
-@app.post("/test-cases/<case_id>/status")
-def set_status(case_id):
+@app.post("/test-cases/<case_key>/status")
+def set_status(case_key):
     status = request.form.get("status", "").strip()
     if status not in STATUSES:
         return "Invalid status.", 400
-    cases = load_cases()
-    for case in cases:
-        if case.get("id") == case_id:
-            case["status"] = status
-            case["updated_at"] = datetime.now(timezone.utc).isoformat()
-            save_cases(cases)
-            return redirect(url_for("index"))
-    return "Test case not found.", 404
 
-
-@app.post("/test-cases/<case_id>/delete")
-def delete_case(case_id):
-    cases = load_cases()
-    remaining = [case for case in cases if case.get("id") != case_id]
-    if len(remaining) == len(cases):
+    case = db.session.scalar(db.select(TestCase).where(TestCase.case_key == case_key))
+    if case is None:
         return "Test case not found.", 404
-    save_cases(remaining)
+
+    case.status = status
+    case.updated_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return redirect(url_for("index"))
+
+
+@app.post("/test-cases/<case_key>/delete")
+def delete_case(case_key):
+    case = db.session.scalar(db.select(TestCase).where(TestCase.case_key == case_key))
+    if case is None:
+        return "Test case not found.", 404
+
+    db.session.delete(case)
+    db.session.commit()
     return redirect(url_for("index"))
 
 
 @app.get("/api/test-cases")
 def api_test_cases():
-    return jsonify(load_cases())
+    cases = db.session.scalars(db.select(TestCase).order_by(TestCase.id)).all()
+    return jsonify([case.to_dict() for case in cases])
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "app": "test-hub"}
+    db.session.execute(text("SELECT 1"))
+    return {"status": "ok", "app": "test-hub", "database": "connected"}
+
+
+with app.app_context():
+    db.create_all()
+    seed_initial_case()
 
 
 if __name__ == "__main__":
