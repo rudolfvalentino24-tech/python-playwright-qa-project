@@ -1216,7 +1216,7 @@ TEST_RUN_PAGE_HTML = """
 *{box-sizing:border-box}body{margin:0;min-height:100vh;color:var(--text);background:radial-gradient(circle at 8% 5%,rgba(98,134,255,.17),transparent 28%),radial-gradient(circle at 94% 16%,rgba(36,117,255,.11),transparent 24%),linear-gradient(180deg,#f8faff,#eef3fb)}
 header{padding:16px 30px;background:rgba(20,42,82,.94);color:#fff}.brand{display:flex;align-items:center;gap:12px}.brand-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#6286ff,#1f63f2)}.brand strong{font-size:20px}.brand span{display:block;font-size:12px;opacity:.7}
 .wrap{max-width:1220px;margin:0 auto;padding:32px 22px 50px}.top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:20px}.top h1{margin:0;font-size:29px;color:#172b4d}.subtitle{margin-top:5px;color:var(--muted)}.actions{display:flex;gap:8px;flex-wrap:wrap}.button{display:inline-block;padding:10px 14px;border-radius:10px;background:#eef2f7;color:#20324f;text-decoration:none;font-weight:750}
-.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:11px;margin-bottom:20px}.stat{padding:15px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:0 10px 28px rgba(35,61,108,.06)}.stat strong{display:block;font-size:24px;color:#17325d}.stat span{display:block;margin-top:5px;font-size:12px;color:var(--muted);font-weight:650}
+.stats{display:grid;grid-template-columns:repeat(7,1fr);gap:11px;margin-bottom:20px}.stat{padding:15px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:0 10px 28px rgba(35,61,108,.06)}.stat strong{display:block;font-size:24px;color:#17325d}.stat span{display:block;margin-top:5px;font-size:12px;color:var(--muted);font-weight:650}
 .card{padding:21px;border:1px solid var(--border);border-radius:18px;background:var(--surface);box-shadow:0 16px 42px rgba(35,61,108,.07)}.progress{height:10px;margin:12px 0 20px;border-radius:999px;background:#e7ecf4;overflow:hidden}.progress>div{height:100%;background:linear-gradient(90deg,#2f66e8,#2475ff)}
 .run-row{display:grid;grid-template-columns:100px minmax(260px,1fr) 130px minmax(340px,1.1fr);gap:12px;align-items:center;padding:14px 0;border-top:1px solid #e7ebf2}.run-row:first-of-type{border-top:0}.badge{display:inline-block;width:max-content;padding:5px 8px;border-radius:999px;font-size:12px;font-weight:800}.Passed{background:#dcfce7;color:#166534}.Failed{background:#fee2e2;color:#991b1b}.Blocked{background:#fef3c7;color:#92400e}.Skipped{background:#e5e7eb;color:#4b5563}.NotRun{background:#edf1f7;color:#526174}
 .case-link{color:#243854;text-decoration:none;font-weight:850}.case-link:hover{color:#2468e5}.muted{margin-top:4px;color:var(--muted);font-size:12px}.result-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.result-form input{flex:1;min-width:120px;height:37px;padding:0 9px;border:1px solid #ccd5e4;border-radius:9px;font:inherit}.result-form button{border:0;border-radius:8px;padding:8px 9px;font:inherit;font-size:12px;font-weight:800;cursor:pointer}.pass{background:#dcfce7;color:#166534}.fail{background:#fee2e2;color:#991b1b}.block{background:#fef3c7;color:#92400e}.skip{background:#e5e7eb;color:#4b5563}
@@ -1247,6 +1247,7 @@ header{padding:16px 30px;background:rgba(20,42,82,.94);color:#fff}.brand{display
     <div class="stat"><strong>{{ summary.passed }}</strong><span>Passed</span></div>
     <div class="stat"><strong>{{ summary.failed }}</strong><span>Failed</span></div>
     <div class="stat"><strong>{{ summary.blocked }}</strong><span>Blocked</span></div>
+    <div class="stat"><strong>{{ summary.skipped }}</strong><span>Skipped</span></div>
     <div class="stat"><strong>{{ summary.not_run }}</strong><span>Not Run</span></div>
   </section>
 
@@ -1429,7 +1430,7 @@ header{padding:16px 30px;background:rgba(20,42,82,.94);color:#fff;box-shadow:0 1
 
   <section class="card">
     <h2>Test runs</h2>
-    {% for run in release.runs %}
+    {% for run in structured_runs %}
       {% set run_stats = run_summaries.get(run.id) %}
       <div class="result-row">
         <span class="badge {% if run_stats.failed %}Failed{% elif run_stats.not_run %}Blocked{% else %}Passed{% endif %}">
@@ -1805,10 +1806,9 @@ def index():
 @app.get("/test-runs")
 def test_runs():
     all_runs = db.session.scalars(
-        db.select(TestRun)
-        .where(db.select(db.func.count(TestRunItem.id)).where(TestRunItem.test_run_id == TestRun.id).scalar_subquery() > 0)
-        .order_by(TestRun.created_at.desc(), TestRun.id.desc())
+        db.select(TestRun).order_by(TestRun.created_at.desc(), TestRun.id.desc())
     ).all()
+    all_runs = [run for run in all_runs if run.items]
     all_releases = db.session.scalars(
         db.select(Release).order_by(Release.release_date.desc(), Release.id.desc())
     ).all()
@@ -2007,6 +2007,7 @@ def release_details(release_id):
         release=release,
         report=release_report_stats(release),
         execution_count=execution_count,
+        structured_runs=[run for run in release.runs if run.items],
         run_summaries={
             run.id: test_run_summary(run)
             for run in release.runs
