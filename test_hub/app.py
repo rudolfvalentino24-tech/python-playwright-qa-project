@@ -1,7 +1,8 @@
 from pathlib import Path
+from collections import OrderedDict
 from flask import Flask, jsonify, redirect, render_template_string, request, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import text
+from sqlalchemy import UniqueConstraint, inspect, text
 import os
 import re
 from datetime import datetime, timezone
@@ -37,7 +38,9 @@ class TestCase(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     case_key = db.Column(db.String(64), unique=True, nullable=False, index=True)
     title = db.Column(db.String(250), nullable=False)
+    # Kept temporarily for one-time migration from the old single-story design.
     jira_key = db.Column(db.String(50), nullable=True, index=True)
+    feature = db.Column(db.String(120), nullable=True, index=True)
     priority = db.Column(db.String(20), nullable=False, default="Medium")
     type = db.Column(db.String(20), nullable=False, default="Manual")
     status = db.Column(db.String(20), nullable=False, default="Draft", index=True)
@@ -61,12 +64,30 @@ class TestCase(db.Model):
         cascade="all, delete-orphan",
         order_by="TestStep.position",
     )
+    jira_links = db.relationship(
+        "TestCaseJiraLink",
+        back_populates="test_case",
+        cascade="all, delete-orphan",
+        order_by="TestCaseJiraLink.jira_key",
+    )
+
+    @property
+    def feature_name(self):
+        return (self.feature or "").strip() or "Uncategorized"
+
+    @property
+    def jira_keys(self):
+        return [link.jira_key for link in self.jira_links]
 
     def to_dict(self):
+        jira_keys = self.jira_keys
         return {
             "id": self.case_key,
             "title": self.title,
-            "jira_key": self.jira_key or "",
+            "feature": self.feature_name,
+            "jira_keys": jira_keys,
+            # Backward-compatible single key for anything still consuming the old API.
+            "jira_key": jira_keys[0] if jira_keys else "",
             "priority": self.priority,
             "type": self.type,
             "status": self.status,
@@ -94,22 +115,51 @@ class TestStep(db.Model):
     test_case = db.relationship("TestCase", back_populates="steps")
 
 
+class TestCaseJiraLink(db.Model):
+    __tablename__ = "test_case_jira_links"
+    __table_args__ = (
+        UniqueConstraint("test_case_id", "jira_key", name="uq_test_case_jira_key"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    test_case_id = db.Column(
+        db.Integer,
+        db.ForeignKey("test_cases.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    jira_key = db.Column(db.String(50), nullable=False, index=True)
+
+    test_case = db.relationship("TestCase", back_populates="jira_links")
+
+
 def normalize_lines(value):
     return [line.strip() for line in value.splitlines() if line.strip()]
 
 
-def next_case_key(jira_key=""):
-    """Generate a readable ID per Jira story, e.g. SCRUM-6-TC-001."""
-    prefix = f"{jira_key}-TC-" if jira_key else "TC-"
-    pattern = re.compile(rf"^{re.escape(prefix)}(\d+)$")
+def parse_jira_keys(value):
+    keys = []
+    seen = set()
+    for raw in re.split(r"[\s,;]+", value.strip().upper()):
+        if not raw:
+            continue
+        if not JIRA_KEY_PATTERN.match(raw):
+            raise ValueError(f"Invalid Jira key: {raw}. Use values like SCRUM-6.")
+        if raw not in seen:
+            keys.append(raw)
+            seen.add(raw)
+    return keys
 
+
+def next_case_key():
+    """Generate a stable test-case ID independent of Jira stories."""
+    pattern = re.compile(r"^TC-(\d+)$")
     numbers = []
     for (case_key,) in db.session.execute(db.select(TestCase.case_key)).all():
         match = pattern.match(case_key or "")
         if match:
             numbers.append(int(match.group(1)))
-
-    return f"{prefix}{max(numbers, default=0) + 1:03d}"
+    return f"TC-{max(numbers, default=0) + 1:03d}"
 
 
 def validate_case_key(case_key):
@@ -121,6 +171,22 @@ def validate_case_key(case_key):
     if existing is not None:
         return f"Test case ID {case_key} already exists."
     return None
+
+
+def set_jira_links(case, jira_keys):
+    case.jira_links = [TestCaseJiraLink(jira_key=key) for key in jira_keys]
+
+
+def grouped_cases(cases):
+    grouped = {}
+    for case in cases:
+        grouped.setdefault(case.feature_name, []).append(case)
+
+    names = sorted(
+        grouped,
+        key=lambda name: (name == "Uncategorized", name.lower()),
+    )
+    return [{"feature": name, "cases": grouped[name]} for name in names]
 
 
 PAGE_HTML = """
@@ -136,10 +202,11 @@ PAGE_HTML = """
 header{background:#172b4d;color:#fff;padding:18px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px;position:sticky;top:0;z-index:5}
 .brand{display:flex;align-items:center;gap:12px}.brand h1{font-size:22px;margin:0}.brand span{font-size:13px;opacity:.75}
 main{max-width:1320px;margin:0 auto;padding:24px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}.stat{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px}.stat strong{display:block;font-size:26px}.stat span{color:var(--muted);font-size:13px}
-.grid{display:grid;grid-template-columns:1.25fr .75fr;gap:18px}.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px}.card h2{margin:0 0 14px;font-size:18px}
-.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}input,select,textarea,button{font:inherit}input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text)}textarea{min-height:82px;resize:vertical}.toolbar input{flex:1;min-width:220px}.toolbar select{width:160px}
+.grid{display:grid;grid-template-columns:1.35fr .65fr;gap:18px}.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px}.card h2{margin:0 0 14px;font-size:18px}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}input,select,textarea,button{font:inherit}input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text)}textarea{min-height:82px;resize:vertical}.toolbar input{flex:1;min-width:220px}.toolbar select{width:160px}
 button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:600}.primary{background:var(--accent);color:#fff}.primary:hover{background:var(--accent2)}.secondary{background:#f1f2f4;color:var(--text)}.danger{background:#ffebe6;color:var(--danger)}
-.case{border:1px solid var(--border);border-radius:9px;padding:14px;margin:10px 0}.case-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.case-title{font-weight:700}.meta{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.pill{font-size:12px;padding:3px 7px;border-radius:999px;background:#f1f2f4;color:#44546f}.jira{color:var(--accent);text-decoration:none;font-weight:600}.details{color:var(--muted);font-size:13px;white-space:pre-wrap}.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;align-items:center}.button-link{display:inline-block;text-decoration:none;border-radius:7px;padding:9px 13px;font-weight:600}
+.feature-group{border:1px solid var(--border);border-radius:10px;margin:14px 0;overflow:hidden}.feature-head{padding:13px 15px;background:#f7f8f9;display:flex;align-items:center;justify-content:space-between;gap:10px}.feature-title{font-weight:800;font-size:16px}.feature-count{font-size:12px;color:var(--muted)}
+.case{border-top:1px solid var(--border);padding:14px}.case:first-of-type{border-top:0}.case-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.case-title{font-weight:700}.meta{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.pill{font-size:12px;padding:3px 7px;border-radius:999px;background:#f1f2f4;color:#44546f}.jira{color:var(--accent);text-decoration:none;font-weight:700}.details{color:var(--muted);font-size:13px;white-space:pre-wrap}.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;align-items:center}.button-link{display:inline-block;text-decoration:none;border-radius:7px;padding:9px 13px;font-weight:600}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field{margin-bottom:11px}.field label{display:block;font-size:12px;font-weight:700;color:#44546f;margin-bottom:5px}.hint{font-size:12px;color:var(--muted);margin-top:5px}.empty{text-align:center;color:var(--muted);padding:36px 10px}
 @media(max-width:900px){.stats{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}}@media(max-width:520px){.stats{grid-template-columns:1fr}main{padding:14px}header{padding:14px 16px}}
 </style>
@@ -147,7 +214,7 @@ button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:60
 <body>
 <header>
   <div class="brand"><div style="font-size:26px">🧪</div><div><h1>Test Hub</h1><span>QA test case management</span></div></div>
-  <div style="font-size:13px;opacity:.8">Automation execution: GitHub Actions</div>
+  <div style="font-size:13px;opacity:.8">Grouped by feature · linked to Jira stories</div>
 </header>
 <main>
   <section class="stats">
@@ -159,48 +226,59 @@ button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:60
 
   <section class="grid">
     <div class="card">
-      <h2>Test cases</h2>
+      <h2>Test cases by feature</h2>
       <div class="toolbar">
-        <input id="search" placeholder="Search ID, title or Jira key…" oninput="filterCases()">
+        <input id="search" placeholder="Search feature, ID, title or Jira key…" oninput="filterCases()">
         <select id="typeFilter" onchange="filterCases()"><option value="">All types</option><option>Manual</option><option>Automated</option></select>
         <select id="statusFilter" onchange="filterCases()"><option value="">All statuses</option><option>Draft</option><option>Ready</option><option>Passed</option><option>Failed</option><option>Blocked</option></select>
       </div>
 
       <div id="caseList">
-      {% for c in cases %}
-        <article class="case" data-search="{{ (c.case_key ~ ' ' ~ c.title ~ ' ' ~ (c.jira_key or ''))|lower }}" data-type="{{ c.type }}" data-status="{{ c.status }}">
-          <div class="case-head">
-            <div>
-              <div class="case-title">{{ c.case_key }} — {{ c.title }}</div>
-              <div class="meta">
-                <span class="pill">{{ c.type }}</span>
-                <span class="pill">{{ c.priority }}</span>
-                <span class="pill">{{ c.status }}</span>
-                {% if c.jira_key %}
-                  <a class="jira" target="_blank" rel="noopener" href="{{ jira_base }}/{{ c.jira_key }}">{{ c.jira_key }}</a>
-                  <a class="jira" href="{{ url_for('jira_story_cases', jira_key=c.jira_key) }}">Story view</a>
-                {% endif %}
+      {% for group in groups %}
+        <section class="feature-group" data-feature="{{ group.feature|lower }}">
+          <div class="feature-head">
+            <div class="feature-title">{{ group.feature }}</div>
+            <div class="feature-count">{{ group.cases|length }} test case{% if group.cases|length != 1 %}s{% endif %}</div>
+          </div>
+
+          {% for c in group.cases %}
+          <article class="case"
+                   data-search="{{ (group.feature ~ ' ' ~ c.case_key ~ ' ' ~ c.title ~ ' ' ~ (c.jira_keys|join(' ')))|lower }}"
+                   data-type="{{ c.type }}"
+                   data-status="{{ c.status }}">
+            <div class="case-head">
+              <div>
+                <div class="case-title">{{ c.case_key }} — {{ c.title }}</div>
+                <div class="meta">
+                  <span class="pill">{{ c.type }}</span>
+                  <span class="pill">{{ c.priority }}</span>
+                  <span class="pill">{{ c.status }}</span>
+                  {% for jira_key in c.jira_keys %}
+                    <a class="jira" href="{{ url_for('jira_story_cases', jira_key=jira_key) }}">{{ jira_key }}</a>
+                  {% endfor %}
+                </div>
               </div>
             </div>
-          </div>
 
-          {% if c.preconditions %}<div class="details"><strong>Preconditions:</strong> {{ c.preconditions }}</div>{% endif %}
-          <div class="details"><strong>Steps:</strong>
+            {% if c.preconditions %}<div class="details"><strong>Preconditions:</strong> {{ c.preconditions }}</div>{% endif %}
+            <div class="details"><strong>Steps:</strong>
 {% for step in c.steps %}{{ loop.index }}. {{ step.action }}{% if not loop.last %}
 {% endif %}{% endfor %}</div>
-          <div class="details" style="margin-top:7px"><strong>Expected:</strong> {{ c.expected_result }}</div>
+            <div class="details" style="margin-top:7px"><strong>Expected:</strong> {{ c.expected_result }}</div>
 
-          <div class="actions">
-            <a class="secondary button-link" href="{{ url_for('edit_case', case_key=c.case_key) }}">Edit</a>
-            <form method="post" action="{{ url_for('set_status', case_key=c.case_key) }}" style="display:flex;gap:6px">
-              <select name="status" style="width:auto">{% for s in statuses %}<option value="{{ s }}" {% if s == c.status %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
-              <button class="secondary">Update status</button>
-            </form>
-            <form method="post" action="{{ url_for('delete_case', case_key=c.case_key) }}" onsubmit="return confirm('Delete {{ c.case_key }}?')">
-              <button class="danger">Delete</button>
-            </form>
-          </div>
-        </article>
+            <div class="actions">
+              <a class="secondary button-link" href="{{ url_for('edit_case', case_key=c.case_key) }}">Edit</a>
+              <form method="post" action="{{ url_for('set_status', case_key=c.case_key) }}" style="display:flex;gap:6px">
+                <select name="status" style="width:auto">{% for s in statuses %}<option value="{{ s }}" {% if s == c.status %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+                <button class="secondary">Update status</button>
+              </form>
+              <form method="post" action="{{ url_for('delete_case', case_key=c.case_key) }}" onsubmit="return confirm('Delete {{ c.case_key }}?')">
+                <button class="danger">Delete</button>
+              </form>
+            </div>
+          </article>
+          {% endfor %}
+        </section>
       {% else %}
         <div class="empty">No test cases yet. Create the first one on the right.</div>
       {% endfor %}
@@ -211,28 +289,32 @@ button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:60
       <h2>Create test case</h2>
       <form method="post" action="{{ url_for('create_case') }}">
         <div class="field">
-          <label>Title</label>
-          <input name="title" required placeholder="Unauthenticated user is redirected to login">
+          <label>Feature / Module</label>
+          <input name="feature" required placeholder="Authentication">
+          <div class="hint">This controls where the test case is grouped on the front page.</div>
         </div>
-        <div class="form-row">
-          <div class="field">
-            <label>Jira story</label>
-            <input id="jiraKey" name="jira_key" placeholder="SCRUM-6" oninput="updateIdHint()">
-          </div>
-          <div class="field">
-            <label>Test case ID</label>
-            <input name="case_key" placeholder="Leave blank to auto-generate">
-            <div class="hint" id="caseIdHint">Example: SCRUM-6-TC-001</div>
-          </div>
+        <div class="field">
+          <label>Title</label>
+          <input name="title" required placeholder="Reveal password toggles visibility">
+        </div>
+        <div class="field">
+          <label>Jira stories</label>
+          <input name="jira_keys" placeholder="SCRUM-6, SCRUM-18">
+          <div class="hint">Optional. Add one or many Jira keys separated by commas or spaces.</div>
+        </div>
+        <div class="field">
+          <label>Test case ID</label>
+          <input name="case_key" placeholder="Leave blank to auto-generate">
+          <div class="hint">Auto-generated IDs use TC-001, TC-002, and so on.</div>
         </div>
         <div class="form-row">
           <div class="field"><label>Priority</label><select name="priority"><option>Medium</option><option>High</option><option>Critical</option><option>Low</option></select></div>
           <div class="field"><label>Type</label><select name="type"><option>Manual</option><option>Automated</option></select></div>
         </div>
         <div class="field"><label>Status</label><select name="status"><option>Draft</option><option>Ready</option><option>Passed</option><option>Failed</option><option>Blocked</option></select></div>
-        <div class="field"><label>Preconditions</label><textarea name="preconditions" placeholder="User is not logged in"></textarea></div>
-        <div class="field"><label>Steps</label><textarea name="steps" required placeholder="Open the Test Hub main page"></textarea><div class="hint">One step per line.</div></div>
-        <div class="field"><label>Expected result</label><textarea name="expected_result" required placeholder="User is redirected to the login page."></textarea></div>
+        <div class="field"><label>Preconditions</label><textarea name="preconditions" placeholder="User is on the login page"></textarea></div>
+        <div class="field"><label>Steps</label><textarea name="steps" required placeholder="Enter a password&#10;Click the reveal-password icon"></textarea><div class="hint">One step per line.</div></div>
+        <div class="field"><label>Expected result</label><textarea name="expected_result" required placeholder="The password becomes visible."></textarea></div>
         <button class="primary" type="submit">Create test case</button>
       </form>
     </aside>
@@ -244,18 +326,19 @@ function filterCases(){
   const q=document.getElementById('search').value.trim().toLowerCase();
   const type=document.getElementById('typeFilter').value;
   const status=document.getElementById('statusFilter').value;
-  document.querySelectorAll('.case').forEach(el=>{
-    const okText=!q || el.dataset.search.includes(q);
-    const okType=!type || el.dataset.type===type;
-    const okStatus=!status || el.dataset.status===status;
-    el.style.display=(okText&&okType&&okStatus)?'block':'none';
-  });
-}
 
-function updateIdHint(){
-  const jira=document.getElementById('jiraKey').value.trim().toUpperCase();
-  document.getElementById('caseIdHint').textContent =
-    jira ? `Auto-generated example: ${jira}-TC-001` : 'Without Jira: TC-001';
+  document.querySelectorAll('.feature-group').forEach(group=>{
+    let visible=0;
+    group.querySelectorAll('.case').forEach(el=>{
+      const okText=!q || el.dataset.search.includes(q);
+      const okType=!type || el.dataset.type===type;
+      const okStatus=!status || el.dataset.status===status;
+      const show=okText&&okType&&okStatus;
+      el.style.display=show?'block':'none';
+      if(show) visible++;
+    });
+    group.style.display=visible?'block':'none';
+  });
 }
 </script>
 </body>
@@ -276,7 +359,7 @@ STORY_PAGE_HTML = """
 header{background:#172b4d;color:#fff;padding:18px 28px}.wrap{max-width:980px;margin:0 auto;padding:24px}
 .top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px}.top h1{margin:0 0 5px;font-size:25px}.muted{color:var(--muted)}
 .actions{display:flex;gap:8px;flex-wrap:wrap}.button{display:inline-block;text-decoration:none;border-radius:7px;padding:9px 13px;font-weight:700;background:#f1f2f4;color:var(--text)}.primary{background:var(--accent);color:#fff}
-.case{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin:12px 0}.title{font-size:17px;font-weight:700}.meta{display:flex;gap:7px;flex-wrap:wrap;margin:9px 0}.pill{font-size:12px;padding:3px 7px;border-radius:999px;background:#f1f2f4;color:#44546f}.details{font-size:13px;color:var(--muted);white-space:pre-wrap;margin-top:7px}.empty{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:30px;text-align:center;color:var(--muted)}
+.case{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin:12px 0}.title{font-size:17px;font-weight:700}.feature{font-size:13px;font-weight:700;color:#44546f;margin-top:5px}.meta{display:flex;gap:7px;flex-wrap:wrap;margin:9px 0}.pill{font-size:12px;padding:3px 7px;border-radius:999px;background:#f1f2f4;color:#44546f}.jira{color:var(--accent);text-decoration:none;font-weight:700}.details{font-size:13px;color:var(--muted);white-space:pre-wrap;margin-top:7px}.empty{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:30px;text-align:center;color:var(--muted)}
 @media(max-width:650px){.top{flex-direction:column}}
 </style>
 </head>
@@ -297,10 +380,16 @@ header{background:#172b4d;color:#fff;padding:18px 28px}.wrap{max-width:980px;mar
   {% for c in cases %}
     <article class="case">
       <div class="title">{{ c.case_key }} — {{ c.title }}</div>
+      <div class="feature">Feature: {{ c.feature_name }}</div>
       <div class="meta">
         <span class="pill">{{ c.type }}</span>
         <span class="pill">{{ c.priority }}</span>
         <span class="pill">{{ c.status }}</span>
+        {% for other_key in c.jira_keys %}
+          {% if other_key != jira_key %}
+            <a class="jira" href="{{ url_for('jira_story_cases', jira_key=other_key) }}">{{ other_key }}</a>
+          {% endif %}
+        {% endfor %}
       </div>
       {% if c.preconditions %}<div class="details"><strong>Preconditions:</strong> {{ c.preconditions }}</div>{% endif %}
       <div class="details"><strong>Steps:</strong>
@@ -320,87 +409,6 @@ header{background:#172b4d;color:#fff;padding:18px 28px}.wrap{max-width:980px;mar
 """
 
 
-@app.get("/")
-def index():
-    cases = db.session.scalars(db.select(TestCase).order_by(TestCase.id.desc())).all()
-    stats = {
-        "total": len(cases),
-        "manual": sum(1 for c in cases if c.type == "Manual"),
-        "automated": sum(1 for c in cases if c.type == "Automated"),
-        "ready": sum(1 for c in cases if c.status == "Ready"),
-    }
-    return render_template_string(
-        PAGE_HTML,
-        cases=cases,
-        stats=stats,
-        statuses=["Draft", "Ready", "Passed", "Failed", "Blocked"],
-        jira_base=JIRA_BASE_URL.rstrip("/"),
-    )
-
-
-@app.get("/jira/<jira_key>")
-def jira_story_cases(jira_key):
-    jira_key = jira_key.strip().upper()
-    if not JIRA_KEY_PATTERN.match(jira_key):
-        return "Invalid Jira key.", 400
-
-    cases = db.session.scalars(
-        db.select(TestCase)
-        .where(TestCase.jira_key == jira_key)
-        .order_by(TestCase.id)
-    ).all()
-
-    return render_template_string(
-        STORY_PAGE_HTML,
-        jira_key=jira_key,
-        cases=cases,
-        jira_base=JIRA_BASE_URL.rstrip("/"),
-    )
-
-
-@app.post("/test-cases")
-def create_case():
-    title = request.form.get("title", "").strip()
-    jira_key = request.form.get("jira_key", "").strip().upper()
-    requested_case_key = request.form.get("case_key", "").strip().upper()
-    priority = request.form.get("priority", "Medium").strip()
-    case_type = request.form.get("type", "Manual").strip()
-    status = request.form.get("status", "Draft").strip()
-    preconditions = request.form.get("preconditions", "").strip()
-    steps = normalize_lines(request.form.get("steps", ""))
-    expected_result = request.form.get("expected_result", "").strip()
-
-    if not title or not steps or not expected_result:
-        return "Title, steps and expected result are required.", 400
-    if jira_key and not JIRA_KEY_PATTERN.match(jira_key):
-        return "Jira key must look like SCRUM-6.", 400
-    if priority not in PRIORITIES or case_type not in TYPES or status not in STATUSES:
-        return "Invalid test case metadata.", 400
-
-    case_key = requested_case_key or next_case_key(jira_key)
-    key_error = validate_case_key(case_key)
-    if key_error:
-        return key_error, 400
-
-    case = TestCase(
-        case_key=case_key,
-        title=title,
-        jira_key=jira_key or None,
-        priority=priority,
-        type=case_type,
-        status=status,
-        preconditions=preconditions,
-        expected_result=expected_result,
-    )
-    case.steps = [
-        TestStep(position=index, action=action)
-        for index, action in enumerate(steps, start=1)
-    ]
-    db.session.add(case)
-    db.session.commit()
-    return redirect(url_for("index"))
-
-
 EDIT_PAGE_HTML = """
 <!doctype html>
 <html lang="en">
@@ -414,7 +422,7 @@ EDIT_PAGE_HTML = """
 main{max-width:820px;margin:32px auto;padding:0 20px}.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:22px}
 h1{margin:0 0 20px;font-size:22px}.field{margin-bottom:14px}.field label{display:block;font-size:12px;font-weight:700;color:#44546f;margin-bottom:5px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}input,select,textarea,button{font:inherit}input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text)}
-textarea{min-height:100px;resize:vertical}.actions{display:flex;gap:10px;margin-top:18px}.primary{background:var(--accent);color:#fff;border:0;border-radius:7px;padding:10px 14px;font-weight:700;cursor:pointer}.primary:hover{background:var(--accent2)}
+textarea{min-height:100px;resize:vertical}.actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}.primary{background:var(--accent);color:#fff;border:0;border-radius:7px;padding:10px 14px;font-weight:700;cursor:pointer}.primary:hover{background:var(--accent2)}
 .cancel{background:#f1f2f4;color:var(--text);text-decoration:none;border-radius:7px;padding:10px 14px;font-weight:700}.hint{font-size:12px;color:var(--muted);margin-top:5px}
 @media(max-width:650px){.form-row{grid-template-columns:1fr}}
 </style>
@@ -426,9 +434,14 @@ textarea{min-height:100px;resize:vertical}.actions{display:flex;gap:10px;margin-
     <form method="post" action="{{ url_for('update_case', case_key=case.case_key) }}">
       <div class="form-row">
         <div class="field"><label>Test case ID</label><input name="case_key" value="{{ case.case_key }}" required></div>
-        <div class="field"><label>Jira story</label><input name="jira_key" value="{{ case.jira_key or '' }}" placeholder="SCRUM-6"></div>
+        <div class="field"><label>Feature / Module</label><input name="feature" value="{{ case.feature_name }}" required></div>
       </div>
       <div class="field"><label>Title</label><input name="title" value="{{ case.title }}" required></div>
+      <div class="field">
+        <label>Jira stories</label>
+        <input name="jira_keys" value="{{ case.jira_keys|join(', ') }}" placeholder="SCRUM-6, SCRUM-18">
+        <div class="hint">One or many Jira keys, separated by commas or spaces.</div>
+      </div>
       <div class="form-row">
         <div class="field"><label>Priority</label><select name="priority">{% for p in priorities %}<option value="{{ p }}" {% if p == case.priority %}selected{% endif %}>{{ p }}</option>{% endfor %}</select></div>
         <div class="field"><label>Type</label><select name="type">{% for t in types %}<option value="{{ t }}" {% if t == case.type %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
@@ -440,9 +453,9 @@ textarea{min-height:100px;resize:vertical}.actions{display:flex;gap:10px;margin-
       <div class="field"><label>Expected result</label><textarea name="expected_result" required>{{ case.expected_result }}</textarea></div>
       <div class="actions">
         <button class="primary" type="submit">Save changes</button>
-        {% if case.jira_key %}
-          <a class="cancel" href="{{ url_for('jira_story_cases', jira_key=case.jira_key) }}">Story view</a>
-        {% endif %}
+        {% for jira_key in case.jira_keys %}
+          <a class="cancel" href="{{ url_for('jira_story_cases', jira_key=jira_key) }}">{{ jira_key }} view</a>
+        {% endfor %}
         <a class="cancel" href="{{ url_for('index') }}">Cancel</a>
       </div>
     </form>
@@ -451,6 +464,91 @@ textarea{min-height:100px;resize:vertical}.actions{display:flex;gap:10px;margin-
 </body>
 </html>
 """
+
+
+@app.get("/")
+def index():
+    cases = db.session.scalars(db.select(TestCase).order_by(TestCase.id.desc())).all()
+    stats = {
+        "total": len(cases),
+        "manual": sum(1 for c in cases if c.type == "Manual"),
+        "automated": sum(1 for c in cases if c.type == "Automated"),
+        "ready": sum(1 for c in cases if c.status == "Ready"),
+    }
+    return render_template_string(
+        PAGE_HTML,
+        groups=grouped_cases(cases),
+        stats=stats,
+        statuses=["Draft", "Ready", "Passed", "Failed", "Blocked"],
+    )
+
+
+@app.get("/jira/<jira_key>")
+def jira_story_cases(jira_key):
+    jira_key = jira_key.strip().upper()
+    if not JIRA_KEY_PATTERN.match(jira_key):
+        return "Invalid Jira key.", 400
+
+    cases = db.session.scalars(
+        db.select(TestCase)
+        .join(TestCaseJiraLink)
+        .where(TestCaseJiraLink.jira_key == jira_key)
+        .order_by(TestCase.id)
+    ).all()
+
+    return render_template_string(
+        STORY_PAGE_HTML,
+        jira_key=jira_key,
+        cases=cases,
+        jira_base=JIRA_BASE_URL.rstrip("/"),
+    )
+
+
+@app.post("/test-cases")
+def create_case():
+    feature = request.form.get("feature", "").strip()
+    title = request.form.get("title", "").strip()
+    requested_case_key = request.form.get("case_key", "").strip().upper()
+    priority = request.form.get("priority", "Medium").strip()
+    case_type = request.form.get("type", "Manual").strip()
+    status = request.form.get("status", "Draft").strip()
+    preconditions = request.form.get("preconditions", "").strip()
+    steps = normalize_lines(request.form.get("steps", ""))
+    expected_result = request.form.get("expected_result", "").strip()
+
+    try:
+        jira_keys = parse_jira_keys(request.form.get("jira_keys", ""))
+    except ValueError as exc:
+        return str(exc), 400
+
+    if not feature or not title or not steps or not expected_result:
+        return "Feature, title, steps and expected result are required.", 400
+    if priority not in PRIORITIES or case_type not in TYPES or status not in STATUSES:
+        return "Invalid test case metadata.", 400
+
+    case_key = requested_case_key or next_case_key()
+    key_error = validate_case_key(case_key)
+    if key_error:
+        return key_error, 400
+
+    case = TestCase(
+        case_key=case_key,
+        title=title,
+        feature=feature,
+        priority=priority,
+        type=case_type,
+        status=status,
+        preconditions=preconditions,
+        expected_result=expected_result,
+    )
+    case.steps = [
+        TestStep(position=index, action=action)
+        for index, action in enumerate(steps, start=1)
+    ]
+    set_jira_links(case, jira_keys)
+    db.session.add(case)
+    db.session.commit()
+    return redirect(url_for("index"))
 
 
 @app.get("/test-cases/<case_key>/edit")
@@ -479,8 +577,8 @@ def update_case(case_key):
         return "Test case not found.", 404
 
     new_case_key = request.form.get("case_key", "").strip().upper()
+    feature = request.form.get("feature", "").strip()
     title = request.form.get("title", "").strip()
-    jira_key = request.form.get("jira_key", "").strip().upper()
     priority = request.form.get("priority", "").strip()
     case_type = request.form.get("type", "").strip()
     status = request.form.get("status", "").strip()
@@ -488,10 +586,13 @@ def update_case(case_key):
     steps = normalize_lines(request.form.get("steps", ""))
     expected_result = request.form.get("expected_result", "").strip()
 
-    if not new_case_key or not title or not steps or not expected_result:
-        return "Test case ID, title, steps and expected result are required.", 400
-    if jira_key and not JIRA_KEY_PATTERN.match(jira_key):
-        return "Jira key must look like SCRUM-6.", 400
+    try:
+        jira_keys = parse_jira_keys(request.form.get("jira_keys", ""))
+    except ValueError as exc:
+        return str(exc), 400
+
+    if not new_case_key or not feature or not title or not steps or not expected_result:
+        return "Test case ID, feature, title, steps and expected result are required.", 400
     if priority not in PRIORITIES or case_type not in TYPES or status not in STATUSES:
         return "Invalid test case metadata.", 400
 
@@ -501,8 +602,8 @@ def update_case(case_key):
             return key_error, 400
 
     case.case_key = new_case_key
+    case.feature = feature
     case.title = title
-    case.jira_key = jira_key or None
     case.priority = priority
     case.type = case_type
     case.status = status
@@ -513,6 +614,7 @@ def update_case(case_key):
         TestStep(position=index, action=action)
         for index, action in enumerate(steps, start=1)
     ]
+    set_jira_links(case, jira_keys)
 
     db.session.commit()
     return redirect(url_for("index"))
@@ -563,7 +665,8 @@ def api_jira_test_cases(jira_key):
 
     cases = db.session.scalars(
         db.select(TestCase)
-        .where(TestCase.jira_key == jira_key)
+        .join(TestCaseJiraLink)
+        .where(TestCaseJiraLink.jira_key == jira_key)
         .order_by(TestCase.id)
     ).all()
     return jsonify([case.to_dict() for case in cases])
@@ -575,8 +678,41 @@ def health():
     return {"status": "ok", "app": "test-hub", "database": "connected"}
 
 
-with app.app_context():
+def migrate_schema_and_legacy_jira_links():
     db.create_all()
+
+    inspector = inspect(db.engine)
+    if "test_cases" not in inspector.get_table_names():
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("test_cases")}
+    if "feature" not in columns:
+        db.session.execute(text("ALTER TABLE test_cases ADD COLUMN feature VARCHAR(120)"))
+        db.session.commit()
+
+    # Move any legacy single Jira story into the new many-to-many table once.
+    legacy_cases = db.session.scalars(
+        db.select(TestCase).where(TestCase.jira_key.is_not(None))
+    ).all()
+    for case in legacy_cases:
+        legacy_key = (case.jira_key or "").strip().upper()
+        if legacy_key and JIRA_KEY_PATTERN.match(legacy_key):
+            exists = db.session.scalar(
+                db.select(TestCaseJiraLink.id).where(
+                    TestCaseJiraLink.test_case_id == case.id,
+                    TestCaseJiraLink.jira_key == legacy_key,
+                )
+            )
+            if exists is None:
+                db.session.add(
+                    TestCaseJiraLink(test_case_id=case.id, jira_key=legacy_key)
+                )
+        case.jira_key = None
+    db.session.commit()
+
+
+with app.app_context():
+    migrate_schema_and_legacy_jira_links()
 
 
 if __name__ == "__main__":
