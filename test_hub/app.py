@@ -3,12 +3,20 @@ from collections import OrderedDict
 from flask import Flask, jsonify, redirect, render_template_string, request, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import UniqueConstraint, inspect, text
+import base64
+import json
 import os
 import re
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from datetime import datetime, timezone
 
 BASE_DIR = Path(__file__).resolve().parent
-JIRA_BASE_URL = os.environ.get("JIRA_BASE_URL", "https://qa-test-store.atlassian.net/browse")
+JIRA_SITE_URL = os.environ.get("JIRA_SITE_URL", "https://qa-test-store.atlassian.net").rstrip("/")
+JIRA_BASE_URL = f"{JIRA_SITE_URL}/browse"
+JIRA_PROJECT_KEY = os.environ.get("JIRA_PROJECT_KEY", "SCRUM").strip().upper()
+JIRA_EMAIL = os.environ.get("JIRA_EMAIL", "").strip()
+JIRA_API_TOKEN = os.environ.get("JIRA_API_TOKEN", "").strip()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "test-hub-dev-secret")
@@ -189,6 +197,57 @@ def set_jira_links(case, jira_keys):
             case.jira_links.append(TestCaseJiraLink(jira_key=jira_key))
 
 
+def fetch_jira_stories():
+    """Fetch Story issues from Jira for the searchable multi-select."""
+    if not JIRA_EMAIL or not JIRA_API_TOKEN:
+        raise RuntimeError(
+            "Jira API credentials are not configured. Set JIRA_EMAIL and JIRA_API_TOKEN."
+        )
+
+    auth = base64.b64encode(
+        f"{JIRA_EMAIL}:{JIRA_API_TOKEN}".encode("utf-8")
+    ).decode("ascii")
+    payload = json.dumps({
+        "jql": f'project = "{JIRA_PROJECT_KEY}" AND issuetype = Story ORDER BY created DESC',
+        "fields": ["summary", "status"],
+        "maxResults": 100,
+    }).encode("utf-8")
+
+    jira_request = Request(
+        f"{JIRA_SITE_URL}/rest/api/3/search/jql",
+        data=payload,
+        method="POST",
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": f"Basic {auth}",
+        },
+    )
+
+    try:
+        with urlopen(jira_request, timeout=10) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        if exc.code == 401:
+            raise RuntimeError("Jira authentication failed. Check JIRA_EMAIL and JIRA_API_TOKEN.") from exc
+        if exc.code == 403:
+            raise RuntimeError("Jira denied access to the project. Check Jira permissions.") from exc
+        raise RuntimeError(f"Jira returned HTTP {exc.code}.") from exc
+    except URLError as exc:
+        raise RuntimeError("Test Hub could not connect to Jira.") from exc
+
+    stories = []
+    for issue in data.get("issues", []):
+        fields = issue.get("fields") or {}
+        status = fields.get("status") or {}
+        stories.append({
+            "key": issue.get("key", ""),
+            "summary": fields.get("summary", ""),
+            "status": status.get("name", ""),
+        })
+    return stories
+
+
 def grouped_cases(cases):
     grouped = {}
     for case in cases:
@@ -219,7 +278,7 @@ main{max-width:1320px;margin:0 auto;padding:24px}.stats{display:grid;grid-templa
 button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:600}.primary{background:var(--accent);color:#fff}.primary:hover{background:var(--accent2)}.secondary{background:#f1f2f4;color:var(--text)}.danger{background:#ffebe6;color:var(--danger)}
 .feature-group{border:1px solid var(--border);border-radius:10px;margin:14px 0;overflow:hidden}.feature-head{padding:13px 15px;background:#f7f8f9;display:flex;align-items:center;justify-content:space-between;gap:10px}.feature-title{font-weight:800;font-size:16px}.feature-count{font-size:12px;color:var(--muted)}
 .case{border-top:1px solid var(--border);padding:14px}.case:first-of-type{border-top:0}.case-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.case-title{font-weight:700}.meta{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.pill{font-size:12px;padding:3px 7px;border-radius:999px;background:#f1f2f4;color:#44546f}.jira{color:var(--accent);text-decoration:none;font-weight:700}.details{color:var(--muted);font-size:13px;white-space:pre-wrap}.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;align-items:center}.button-link{display:inline-block;text-decoration:none;border-radius:7px;padding:9px 13px;font-weight:600}
-.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field{margin-bottom:11px}.field label{display:block;font-size:12px;font-weight:700;color:#44546f;margin-bottom:5px}.hint{font-size:12px;color:var(--muted);margin-top:5px}.empty{text-align:center;color:var(--muted);padding:36px 10px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field{margin-bottom:11px}.field label{display:block;font-size:12px;font-weight:700;color:#44546f;margin-bottom:5px}.hint{font-size:12px;color:var(--muted);margin-top:5px}.empty{text-align:center;color:var(--muted);padding:36px 10px}.jira-picker{border:1px solid var(--border);border-radius:8px;padding:10px;background:#fafbfc}.jira-picker-head{display:flex;gap:7px;margin-bottom:8px}.jira-picker-head input{flex:1}.jira-story-list{max-height:190px;overflow:auto;display:flex;flex-direction:column;gap:5px}.jira-story{width:100%;text-align:left;background:#fff;border:1px solid var(--border);font-weight:500}.jira-story.selected{border-color:var(--accent);background:#e9f2ff}.jira-story-key{font-weight:800;color:var(--accent)}.jira-story-summary{color:#44546f}.jira-picker-message{font-size:12px;color:var(--muted);padding:7px 2px}
 @media(max-width:900px){.stats{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}}@media(max-width:520px){.stats{grid-template-columns:1fr}main{padding:14px}header{padding:14px 16px}}
 </style>
 </head>
@@ -311,8 +370,17 @@ button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:60
         </div>
         <div class="field">
           <label>Jira stories</label>
-          <input name="jira_keys" placeholder="SCRUM-6, SCRUM-18">
-          <div class="hint">Optional. Add one or many Jira keys separated by commas or spaces.</div>
+          <input id="createJiraKeys" name="jira_keys" placeholder="SCRUM-6, SCRUM-7">
+          <div class="jira-picker">
+            <div class="jira-picker-head">
+              <input id="createJiraSearch" type="search" placeholder="Search Jira stories..." oninput="renderJiraStories('create')">
+              <button class="secondary" type="button" onclick="loadJiraStories('create')">Refresh</button>
+            </div>
+            <div id="createJiraStoryList" class="jira-story-list">
+              <div class="jira-picker-message">Loading Jira stories…</div>
+            </div>
+          </div>
+          <div class="hint">Select any number of Jira stories. You can still type Jira keys manually if needed.</div>
         </div>
         <div class="field">
           <label>Test case ID</label>
@@ -334,6 +402,8 @@ button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:60
 </main>
 
 <script>
+let jiraStories=[];
+
 function filterCases(){
   const q=document.getElementById('search').value.trim().toLowerCase();
   const type=document.getElementById('typeFilter').value;
@@ -352,6 +422,64 @@ function filterCases(){
     group.style.display=visible?'block':'none';
   });
 }
+
+function selectedJiraKeys(prefix){
+  const input=document.getElementById(prefix+'JiraKeys');
+  return new Set(input.value.split(/[\s,;]+/).map(v=>v.trim().toUpperCase()).filter(Boolean));
+}
+
+function toggleJiraStory(prefix,key){
+  const selected=selectedJiraKeys(prefix);
+  selected.has(key)?selected.delete(key):selected.add(key);
+  document.getElementById(prefix+'JiraKeys').value=[...selected].join(', ');
+  renderJiraStories(prefix);
+}
+
+function renderJiraStories(prefix){
+  const list=document.getElementById(prefix+'JiraStoryList');
+  if(!list) return;
+  const search=document.getElementById(prefix+'JiraSearch').value.trim().toLowerCase();
+  const selected=selectedJiraKeys(prefix);
+  const matches=jiraStories.filter(story=>
+    !search || story.key.toLowerCase().includes(search) || story.summary.toLowerCase().includes(search)
+  );
+
+  if(!matches.length){
+    list.innerHTML='<div class="jira-picker-message">No matching Jira stories.</div>';
+    return;
+  }
+
+  list.innerHTML=matches.map(story=>{
+    const isSelected=selected.has(story.key);
+    return '<button type="button" class="jira-story '+(isSelected?'selected':'')+'" onclick="toggleJiraStory(\''+prefix+'\',\''+story.key+'\')">'+
+      '<span class="jira-story-key">'+story.key+'</span> — '+
+      '<span class="jira-story-summary">'+escapeHtml(story.summary)+'</span>'+
+      (story.status?' <small>('+escapeHtml(story.status)+')</small>':'')+
+      '</button>';
+  }).join('');
+}
+
+function escapeHtml(value){
+  const div=document.createElement('div');
+  div.textContent=value || '';
+  return div.innerHTML;
+}
+
+async function loadJiraStories(prefix){
+  const list=document.getElementById(prefix+'JiraStoryList');
+  list.innerHTML='<div class="jira-picker-message">Loading Jira stories…</div>';
+  try{
+    const response=await fetch('/api/jira/stories');
+    const data=await response.json();
+    if(!response.ok) throw new Error(data.error || 'Unable to load Jira stories.');
+    jiraStories=data.stories || [];
+    renderJiraStories(prefix);
+  }catch(error){
+    list.innerHTML='<div class="jira-picker-message">'+escapeHtml(error.message)+' Manual Jira-key entry is still available above.</div>';
+  }
+}
+
+document.addEventListener('DOMContentLoaded',()=>loadJiraStories('create'));
 </script>
 </body>
 </html>
@@ -435,7 +563,7 @@ main{max-width:820px;margin:32px auto;padding:0 20px}.card{background:var(--surf
 h1{margin:0 0 20px;font-size:22px}.field{margin-bottom:14px}.field label{display:block;font-size:12px;font-weight:700;color:#44546f;margin-bottom:5px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}input,select,textarea,button{font:inherit}input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text)}
 textarea{min-height:100px;resize:vertical}.actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}.primary{background:var(--accent);color:#fff;border:0;border-radius:7px;padding:10px 14px;font-weight:700;cursor:pointer}.primary:hover{background:var(--accent2)}
-.cancel{background:#f1f2f4;color:var(--text);text-decoration:none;border-radius:7px;padding:10px 14px;font-weight:700}.hint{font-size:12px;color:var(--muted);margin-top:5px}
+.cancel{background:#f1f2f4;color:var(--text);text-decoration:none;border-radius:7px;padding:10px 14px;font-weight:700}.hint{font-size:12px;color:var(--muted);margin-top:5px}.jira-picker{border:1px solid var(--border);border-radius:8px;padding:10px;background:#fafbfc}.jira-picker-head{display:flex;gap:7px;margin-bottom:8px}.jira-picker-head input{flex:1}.jira-story-list{max-height:210px;overflow:auto;display:flex;flex-direction:column;gap:5px}.jira-story{width:100%;text-align:left;background:#fff;border:1px solid var(--border);border-radius:7px;padding:8px 10px;cursor:pointer}.jira-story.selected{border-color:var(--accent);background:#e9f2ff}.jira-story-key{font-weight:800;color:var(--accent)}.jira-picker-message{font-size:12px;color:var(--muted);padding:7px 2px}
 @media(max-width:650px){.form-row{grid-template-columns:1fr}}
 </style>
 </head>
@@ -451,8 +579,17 @@ textarea{min-height:100px;resize:vertical}.actions{display:flex;gap:10px;margin-
       <div class="field"><label>Title</label><input name="title" value="{{ case.title }}" required></div>
       <div class="field">
         <label>Jira stories</label>
-        <input name="jira_keys" value="{{ case.jira_keys|join(', ') }}" placeholder="SCRUM-6, SCRUM-18">
-        <div class="hint">One or many Jira keys, separated by commas or spaces.</div>
+        <input id="editJiraKeys" name="jira_keys" value="{{ case.jira_keys|join(', ') }}" placeholder="SCRUM-6, SCRUM-7">
+        <div class="jira-picker">
+          <div class="jira-picker-head">
+            <input id="editJiraSearch" type="search" placeholder="Search Jira stories..." oninput="renderEditJiraStories()">
+            <button class="cancel" type="button" onclick="loadEditJiraStories()">Refresh</button>
+          </div>
+          <div id="editJiraStoryList" class="jira-story-list">
+            <div class="jira-picker-message">Loading Jira stories…</div>
+          </div>
+        </div>
+        <div class="hint">Select any number of Jira stories. Manual Jira-key entry remains available above.</div>
       </div>
       <div class="form-row">
         <div class="field"><label>Priority</label><select name="priority">{% for p in priorities %}<option value="{{ p }}" {% if p == case.priority %}selected{% endif %}>{{ p }}</option>{% endfor %}</select></div>
@@ -473,6 +610,62 @@ textarea{min-height:100px;resize:vertical}.actions{display:flex;gap:10px;margin-
     </form>
   </div>
 </main>
+<script>
+let editJiraStories=[];
+
+function editSelectedJiraKeys(){
+  return new Set(document.getElementById('editJiraKeys').value.split(/[\s,;]+/).map(v=>v.trim().toUpperCase()).filter(Boolean));
+}
+
+function escapeEditHtml(value){
+  const div=document.createElement('div');
+  div.textContent=value || '';
+  return div.innerHTML;
+}
+
+function toggleEditJiraStory(key){
+  const selected=editSelectedJiraKeys();
+  selected.has(key)?selected.delete(key):selected.add(key);
+  document.getElementById('editJiraKeys').value=[...selected].join(', ');
+  renderEditJiraStories();
+}
+
+function renderEditJiraStories(){
+  const list=document.getElementById('editJiraStoryList');
+  const search=document.getElementById('editJiraSearch').value.trim().toLowerCase();
+  const selected=editSelectedJiraKeys();
+  const matches=editJiraStories.filter(story=>
+    !search || story.key.toLowerCase().includes(search) || story.summary.toLowerCase().includes(search)
+  );
+  if(!matches.length){
+    list.innerHTML='<div class="jira-picker-message">No matching Jira stories.</div>';
+    return;
+  }
+  list.innerHTML=matches.map(story=>{
+    const isSelected=selected.has(story.key);
+    return '<button type="button" class="jira-story '+(isSelected?'selected':'')+'" onclick="toggleEditJiraStory(\''+story.key+'\')">'+
+      '<span class="jira-story-key">'+story.key+'</span> — '+escapeEditHtml(story.summary)+
+      (story.status?' <small>('+escapeEditHtml(story.status)+')</small>':'')+
+      '</button>';
+  }).join('');
+}
+
+async function loadEditJiraStories(){
+  const list=document.getElementById('editJiraStoryList');
+  list.innerHTML='<div class="jira-picker-message">Loading Jira stories…</div>';
+  try{
+    const response=await fetch('/api/jira/stories');
+    const data=await response.json();
+    if(!response.ok) throw new Error(data.error || 'Unable to load Jira stories.');
+    editJiraStories=data.stories || [];
+    renderEditJiraStories();
+  }catch(error){
+    list.innerHTML='<div class="jira-picker-message">'+escapeEditHtml(error.message)+' Manual Jira-key entry is still available above.</div>';
+  }
+}
+
+document.addEventListener('DOMContentLoaded',loadEditJiraStories);
+</script>
 </body>
 </html>
 """
@@ -661,6 +854,19 @@ def delete_case(case_key):
     db.session.delete(case)
     db.session.commit()
     return redirect(url_for("index"))
+
+
+@app.get("/api/jira/stories")
+def api_jira_stories():
+    try:
+        stories = fetch_jira_stories()
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc), "stories": []}), 503
+
+    return jsonify({
+        "project": JIRA_PROJECT_KEY,
+        "stories": stories,
+    })
 
 
 @app.get("/api/test-cases")
