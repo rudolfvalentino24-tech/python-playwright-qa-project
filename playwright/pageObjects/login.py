@@ -8,7 +8,17 @@ class LoginPage:
         self.page = page
 
     def navigate(self):
-        self.page.goto(storeURL)
+        # Render free services can show a temporary loading page while waking up.
+        self.page.goto(storeURL, wait_until="domcontentloaded", timeout=60000)
+        login_button = self.page.get_by_role("button", name="Login")
+
+        try:
+            expect(login_button).to_be_visible(timeout=90000)
+        except AssertionError:
+            # One reload covers the case where Render finished waking but the
+            # temporary interstitial did not refresh itself.
+            self.page.reload(wait_until="domcontentloaded", timeout=60000)
+            expect(login_button).to_be_visible(timeout=30000)
 
     def login(self, userEmail, userPassword):
         self.page.get_by_label("Username").fill(userEmail)
