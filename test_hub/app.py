@@ -192,6 +192,10 @@ class TestRun(db.Model):
     environment = db.Column(db.String(80), nullable=False, default="")
     execution_status = db.Column(db.String(20), nullable=False, default="Planned", index=True)
     jenkins_queue_url = db.Column(db.String(500), nullable=False, default="")
+    jenkins_build_number = db.Column(db.String(50), nullable=False, default="")
+    jenkins_build_url = db.Column(db.String(500), nullable=False, default="")
+    jenkins_report_url = db.Column(db.String(500), nullable=False, default="")
+    jenkins_artifacts_url = db.Column(db.String(500), nullable=False, default="")
     runner_message = db.Column(db.Text, nullable=False, default="")
     started_at = db.Column(
         db.DateTime(timezone=True),
@@ -1333,10 +1337,14 @@ header{padding:16px 30px;background:rgba(20,42,82,.94);color:#fff}.brand{display
     </div>
   </div>
 
-  {% if run.runner_message %}
+  {% if run.runner_message or run.jenkins_build_url %}
     <section class="card" style="margin-bottom:18px;padding:14px 18px">
-      <strong>Runner:</strong> {{ run.runner_message }}
-      {% if run.jenkins_queue_url %} · <a href="{{ run.jenkins_queue_url }}" target="_blank" rel="noopener">Open Jenkins queue</a>{% endif %}
+      <strong>Runner:</strong> {{ run.runner_message or 'Jenkins execution' }}
+      {% if run.jenkins_build_number %} · Build #{{ run.jenkins_build_number }}{% endif %}
+      {% if run.jenkins_build_url %} · <a href="{{ run.jenkins_build_url }}" target="_blank" rel="noopener">Open Jenkins build</a>
+      {% elif run.jenkins_queue_url %} · <a href="{{ run.jenkins_queue_url }}" target="_blank" rel="noopener">Open Jenkins queue</a>{% endif %}
+      {% if run.jenkins_report_url %} · <a href="{{ run.jenkins_report_url }}" target="_blank" rel="noopener">HTML report</a>{% endif %}
+      {% if run.jenkins_artifacts_url %} · <a href="{{ run.jenkins_artifacts_url }}" target="_blank" rel="noopener">Artifacts</a>{% endif %}
     </section>
   {% endif %}
 
@@ -1373,7 +1381,12 @@ header{padding:16px 30px;background:rgba(20,42,82,.94);color:#fff}.brand{display
           {% endif %}
         </div>
         <div class="muted">
-          {% if row.result %}{{ row.result.executed_at.strftime('%d %b %H:%M') }}{% else %}Waiting{% endif %}
+          {% if row.result %}
+            {{ row.result.executed_at.strftime('%d %b %H:%M') }}
+            {% if row.result.duration_ms is not none %}
+              · {% if row.result.duration_ms >= 1000 %}{{ '%.2f'|format(row.result.duration_ms / 1000) }} s{% else %}{{ row.result.duration_ms }} ms{% endif %}
+            {% endif %}
+          {% else %}Waiting{% endif %}
         </div>
         {% if run.execution_type == 'Manual' %}
           <form class="result-form" method="post" action="{{ url_for('record_test_run_result', run_id=run.id, item_id=row.item.id) }}">
@@ -2017,6 +2030,10 @@ def start_automated_test_run(run_id):
 
     run.runner_message = ""
     run.jenkins_queue_url = ""
+    run.jenkins_build_number = ""
+    run.jenkins_build_url = ""
+    run.jenkins_report_url = ""
+    run.jenkins_artifacts_url = ""
     run.finished_at = None
 
     try:
@@ -2519,9 +2536,19 @@ def api_finish_test_run(run_id):
     if runner_status not in {"Completed", "Error"}:
         return jsonify({"error": "Invalid runner status."}), 400
 
+    build_number = str(payload.get("build_number", "") or "").strip()
+    build_url = str(payload.get("build_url", "") or "").strip().rstrip("/")
+
     run.execution_status = runner_status
     run.finished_at = datetime.now(timezone.utc)
     run.runner_message = str(payload.get("message", "") or "")
+    run.jenkins_build_number = build_number
+
+    if build_url:
+        run.jenkins_build_url = f"{build_url}/"
+        run.jenkins_report_url = f"{build_url}/artifact/report.html"
+        run.jenkins_artifacts_url = f"{build_url}/artifact/"
+
     db.session.commit()
 
     summary = test_run_summary(run)
@@ -2550,6 +2577,10 @@ def api_test_runs():
             "environment": run.environment,
             "execution_status": run.execution_status,
             "jenkins_queue_url": run.jenkins_queue_url,
+            "jenkins_build_number": run.jenkins_build_number,
+            "jenkins_build_url": run.jenkins_build_url,
+            "jenkins_report_url": run.jenkins_report_url,
+            "jenkins_artifacts_url": run.jenkins_artifacts_url,
             "started_at": run.started_at.isoformat() if run.started_at else None,
             "finished_at": run.finished_at.isoformat() if run.finished_at else None,
             "summary": {
@@ -2643,6 +2674,18 @@ def migrate_schema_and_legacy_jira_links():
             db.session.commit()
         if "runner_message" not in run_columns:
             db.session.execute(text("ALTER TABLE test_runs ADD COLUMN runner_message TEXT DEFAULT '' NOT NULL"))
+            db.session.commit()
+        if "jenkins_build_number" not in run_columns:
+            db.session.execute(text("ALTER TABLE test_runs ADD COLUMN jenkins_build_number VARCHAR(50) DEFAULT '' NOT NULL"))
+            db.session.commit()
+        if "jenkins_build_url" not in run_columns:
+            db.session.execute(text("ALTER TABLE test_runs ADD COLUMN jenkins_build_url VARCHAR(500) DEFAULT '' NOT NULL"))
+            db.session.commit()
+        if "jenkins_report_url" not in run_columns:
+            db.session.execute(text("ALTER TABLE test_runs ADD COLUMN jenkins_report_url VARCHAR(500) DEFAULT '' NOT NULL"))
+            db.session.commit()
+        if "jenkins_artifacts_url" not in run_columns:
+            db.session.execute(text("ALTER TABLE test_runs ADD COLUMN jenkins_artifacts_url VARCHAR(500) DEFAULT '' NOT NULL"))
             db.session.commit()
 
     # Move any legacy single Jira story into the new many-to-many table once.
