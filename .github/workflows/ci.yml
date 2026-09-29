@@ -1,0 +1,126 @@
+name: Store Pre-Deployment Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: store-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-candidate:
+    name: Store pre-deployment gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      STORE_URL: http://127.0.0.1:3002
+      HEADLESS: "1"
+      PORT: "3002"
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-test.txt
+          python -m pip install -r qa_testing_playground/requirements.txt
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Start candidate Store and run test gate
+        shell: bash
+        run: |
+          mkdir -p artifacts
+
+          python qa_testing_playground/store.py > artifacts/store.log 2>&1 &
+          STORE_PID=$!
+          trap 'kill $STORE_PID 2>/dev/null || true' EXIT
+
+          echo "Waiting for Store on $STORE_URL ..."
+          for i in {1..30}; do
+            if curl --fail --silent "$STORE_URL/" > /dev/null; then
+              echo "Store is ready."
+              break
+            fi
+
+            if ! kill -0 "$STORE_PID" 2>/dev/null; then
+              echo "Store process stopped unexpectedly."
+              cat artifacts/store.log
+              exit 1
+            fi
+
+            if [ "$i" -eq 30 ]; then
+              echo "Store did not become ready in time."
+              cat artifacts/store.log
+              exit 1
+            fi
+
+            sleep 1
+          done
+
+          set +e
+
+          echo "================ SMOKE ================"
+          python -m pytest playwright/e2e_bdd playwright/api \
+            -m smoke \
+            --browser_name chrome \
+            -p no:cacheprovider \
+            --html=artifacts/smoke-report.html \
+            --self-contained-html
+          SMOKE_EXIT=$?
+
+          echo "================ API =================="
+          python -m pytest playwright/api/test_store_api.py \
+            -p no:cacheprovider \
+            --html=artifacts/api-report.html \
+            --self-contained-html
+          API_EXIT=$?
+
+          echo "================ E2E UI ==============="
+          python -m pytest playwright/e2e_bdd \
+            --browser_name chrome \
+            -p no:cacheprovider \
+            --html=artifacts/e2e-chromium-report.html \
+            --self-contained-html
+          E2E_EXIT=$?
+
+          set -e
+
+          echo "Smoke exit code: $SMOKE_EXIT"
+          echo "API exit code:   $API_EXIT"
+          echo "E2E exit code:   $E2E_EXIT"
+
+          if [ "$SMOKE_EXIT" -ne 0 ] || [ "$API_EXIT" -ne 0 ] || [ "$E2E_EXIT" -ne 0 ]; then
+            echo "Pre-deployment gate FAILED."
+            exit 1
+          fi
+
+          echo "Pre-deployment gate PASSED."
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: store-qa-reports-${{ github.run_number }}
+          path: |
+            artifacts/*.html
+            artifacts/store.log
+          if-no-files-found: warn
+          retention-days: 14
