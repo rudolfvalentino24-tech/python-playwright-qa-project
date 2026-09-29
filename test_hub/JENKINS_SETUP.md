@@ -116,3 +116,44 @@ Both require:
 ```text
 Authorization: Bearer <TEST_HUB_API_KEY>
 ```
+
+
+## 6. Archive Playwright report, traces and screenshots
+
+In the Jenkins job:
+
+1. Open **Configure**.
+2. Scroll to **Post-build Actions**.
+3. Click **Add post-build action** -> **Archive the artifacts**.
+4. Set **Files to archive** to:
+
+```text
+report.html,test-results/**
+```
+
+5. If Jenkins shows **Archive artifacts only if build is successful**, leave it unchecked so failed runs keep their screenshots and traces.
+6. Save the job.
+
+Test Hub stores the Jenkins build number and build URL reported by Jenkins. After the build finishes, the Test Run page exposes:
+
+- **Open Jenkins build**
+- **HTML report**
+- **Artifacts**
+
+The HTML report URL is:
+
+```text
+<JENKINS_BUILD_URL>/artifact/report.html
+```
+
+The artifacts page is:
+
+```text
+<JENKINS_BUILD_URL>/artifact/
+```
+
+The Jenkins build script clears stale artifacts before each run and generates:
+
+- `report.html`
+- Playwright traces under `test-results/`
+- screenshots for failed tests under `test-results/`
