@@ -12,7 +12,7 @@ Feature: Session
     When the admin returns to the cart
     Then the cart should retain the selected product
 
-  Scenario Outline: SESSION-02 Logout blocks access to <area>
+  Scenario Outline: <case_id> Logout blocks access to <area>
     Given an order exists for permission checks
     And the admin is logged in
     When the admin opens Order History from the Store
@@ -22,9 +22,9 @@ Feature: Session
     Then the login page should be displayed
 
     Examples:
-      | area          |
-      | Store         |
-      | Cart          |
-      | Checkout      |
-      | Order History |
-      | Order Details |
+      | case_id                  | area          |
+      | SESSION-02-STORE          | Store         |
+      | SESSION-02-CART           | Cart          |
+      | SESSION-02-CHECKOUT       | Checkout      |
+      | SESSION-02-ORDER-HISTORY  | Order History |
+      | SESSION-02-ORDER-DETAILS  | Order Details |
