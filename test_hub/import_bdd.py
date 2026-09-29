@@ -177,6 +177,14 @@ def build_case(feature_name, background, scenario, example=None, example_index=N
         "priority": "Medium",
         "type": "Automated",
         "status": "Ready",
+        "suite_tags": ",".join(sorted({
+            "regression",
+            "release",
+            *[
+                tag.removeprefix("@").lower()
+                for tag in scenario.get("tags", [])
+            ],
+        })),
         "preconditions": preconditions,
         "steps": [f"{keyword} {text}" for keyword, text in rendered_steps],
         "expected_result": expected_result(rendered_steps),
@@ -227,6 +235,7 @@ def apply_case(existing, source):
     existing.priority = source["priority"]
     existing.type = source["type"]
     existing.status = source["status"]
+    existing.suite_tags = source["suite_tags"]
     existing.preconditions = source["preconditions"]
     existing.expected_result = source["expected_result"]
     existing.steps = [
@@ -269,6 +278,7 @@ def import_bdd_cases(update_existing=False, dry_run=False):
                 priority=source["priority"],
                 type=source["type"],
                 status=source["status"],
+                suite_tags=source["suite_tags"],
                 preconditions=source["preconditions"],
                 expected_result=source["expected_result"],
             )
