@@ -1365,23 +1365,38 @@ header{padding:16px 30px;background:rgba(20,42,82,.94);color:#fff}.brand{display
           {% endif %}
           <div class="muted">{{ row.item.feature_snapshot }}</div>
           {% if row.result and row.result.notes %}<div class="muted">{{ row.result.notes }}</div>{% endif %}
+          {% if row.result and row.result.error_message %}
+            <details class="muted" style="margin-top:7px">
+              <summary style="cursor:pointer;font-weight:750;color:#991b1b">Failure details</summary>
+              <pre style="white-space:pre-wrap;overflow:auto;margin:7px 0 0">{{ row.result.error_message }}</pre>
+            </details>
+          {% endif %}
         </div>
         <div class="muted">
           {% if row.result %}{{ row.result.executed_at.strftime('%d %b %H:%M') }}{% else %}Waiting{% endif %}
         </div>
-        <form class="result-form" method="post" action="{{ url_for('record_test_run_result', run_id=run.id, item_id=row.item.id) }}">
-          <input name="notes" placeholder="Optional notes">
-          <button class="pass" name="result" value="Passed">Pass</button>
-          <button class="fail" name="result" value="Failed">Fail</button>
-          <button class="block" name="result" value="Blocked">Block</button>
-          <button class="skip" name="result" value="Skipped">Skip</button>
-        </form>
+        {% if run.execution_type == 'Manual' %}
+          <form class="result-form" method="post" action="{{ url_for('record_test_run_result', run_id=run.id, item_id=row.item.id) }}">
+            <input name="notes" placeholder="Optional notes">
+            <button class="pass" name="result" value="Passed">Pass</button>
+            <button class="fail" name="result" value="Failed">Fail</button>
+            <button class="block" name="result" value="Blocked">Block</button>
+            <button class="skip" name="result" value="Skipped">Skip</button>
+          </form>
+        {% else %}
+          <div class="muted">
+            {% if row.status == 'Not Run' %}Waiting for Playwright{% else %}Reported by Playwright{% endif %}
+          </div>
+        {% endif %}
       </div>
     {% else %}
       <div class="muted">This run has no planned test cases.</div>
     {% endfor %}
   </section>
 </main>
+{% if run.execution_status in ['Queued', 'Running'] %}
+<script>setTimeout(()=>window.location.reload(),5000);</script>
+{% endif %}
 </body>
 </html>
 """
