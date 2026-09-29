@@ -139,7 +139,7 @@ main{max-width:1320px;margin:0 auto;padding:24px}.stats{display:grid;grid-templa
 .grid{display:grid;grid-template-columns:1.25fr .75fr;gap:18px}.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px}.card h2{margin:0 0 14px;font-size:18px}
 .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}input,select,textarea,button{font:inherit}input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text)}textarea{min-height:82px;resize:vertical}.toolbar input{flex:1;min-width:220px}.toolbar select{width:160px}
 button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:600}.primary{background:var(--accent);color:#fff}.primary:hover{background:var(--accent2)}.secondary{background:#f1f2f4;color:var(--text)}.danger{background:#ffebe6;color:var(--danger)}
-.case{border:1px solid var(--border);border-radius:9px;padding:14px;margin:10px 0}.case-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.case-title{font-weight:700}.meta{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.pill{font-size:12px;padding:3px 7px;border-radius:999px;background:#f1f2f4;color:#44546f}.jira{color:var(--accent);text-decoration:none;font-weight:600}.details{color:var(--muted);font-size:13px;white-space:pre-wrap}.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;align-items:center}.rename-form{display:flex;gap:6px;align-items:center}.rename-form input{width:190px}
+.case{border:1px solid var(--border);border-radius:9px;padding:14px;margin:10px 0}.case-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.case-title{font-weight:700}.meta{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.pill{font-size:12px;padding:3px 7px;border-radius:999px;background:#f1f2f4;color:#44546f}.jira{color:var(--accent);text-decoration:none;font-weight:600}.details{color:var(--muted);font-size:13px;white-space:pre-wrap}.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;align-items:center}.button-link{display:inline-block;text-decoration:none;border-radius:7px;padding:9px 13px;font-weight:600}.rename-form{display:flex;gap:6px;align-items:center}.rename-form input{width:190px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field{margin-bottom:11px}.field label{display:block;font-size:12px;font-weight:700;color:#44546f;margin-bottom:5px}.hint{font-size:12px;color:var(--muted);margin-top:5px}.empty{text-align:center;color:var(--muted);padding:36px 10px}
 @media(max-width:900px){.stats{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}}@media(max-width:520px){.stats{grid-template-columns:1fr}main{padding:14px}header{padding:14px 16px}.rename-form{width:100%}.rename-form input{width:100%}}
 </style>
@@ -188,14 +188,11 @@ button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:60
           <div class="details" style="margin-top:7px"><strong>Expected:</strong> {{ c.expected_result }}</div>
 
           <div class="actions">
+            <a class="secondary button-link" href="{{ url_for('edit_case', case_key=c.case_key) }}">Edit</a>
+
             <form method="post" action="{{ url_for('set_status', case_key=c.case_key) }}" style="display:flex;gap:6px">
               <select name="status" style="width:auto">{% for s in statuses %}<option value="{{ s }}" {% if s == c.status %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
-              <button class="secondary">Update</button>
-            </form>
-
-            <form class="rename-form" method="post" action="{{ url_for('rename_case', case_key=c.case_key) }}">
-              <input name="new_case_key" value="{{ c.case_key }}" aria-label="Test case ID">
-              <button class="secondary">Rename ID</button>
+              <button class="secondary">Update status</button>
             </form>
 
             <form method="post" action="{{ url_for('delete_case', case_key=c.case_key) }}" onsubmit="return confirm('Delete {{ c.case_key }}?')">
@@ -329,26 +326,116 @@ def create_case():
     return redirect(url_for("index"))
 
 
-@app.post("/test-cases/<case_key>/id")
-def rename_case(case_key):
+EDIT_PAGE_HTML = """
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edit {{ case.case_key }} - Test Hub</title>
+<style>
+:root{--bg:#f4f6f8;--surface:#fff;--text:#172b4d;--muted:#6b778c;--border:#dfe1e6;--accent:#0c66e4;--accent2:#0055cc}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;background:var(--bg);color:var(--text)}
+main{max-width:820px;margin:32px auto;padding:0 20px}.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:22px}
+h1{margin:0 0 20px;font-size:22px}.field{margin-bottom:14px}.field label{display:block;font-size:12px;font-weight:700;color:#44546f;margin-bottom:5px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}input,select,textarea,button{font:inherit}input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text)}
+textarea{min-height:100px;resize:vertical}.actions{display:flex;gap:10px;margin-top:18px}.primary{background:var(--accent);color:#fff;border:0;border-radius:7px;padding:10px 14px;font-weight:700;cursor:pointer}.primary:hover{background:var(--accent2)}
+.cancel{background:#f1f2f4;color:var(--text);text-decoration:none;border-radius:7px;padding:10px 14px;font-weight:700}.hint{font-size:12px;color:var(--muted);margin-top:5px}
+@media(max-width:650px){.form-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>Edit test case</h1>
+    <form method="post" action="{{ url_for('update_case', case_key=case.case_key) }}">
+      <div class="form-row">
+        <div class="field"><label>Test case ID</label><input name="case_key" value="{{ case.case_key }}" required></div>
+        <div class="field"><label>Jira story</label><input name="jira_key" value="{{ case.jira_key or '' }}" placeholder="SCRUM-6"></div>
+      </div>
+      <div class="field"><label>Title</label><input name="title" value="{{ case.title }}" required></div>
+      <div class="form-row">
+        <div class="field"><label>Priority</label><select name="priority">{% for p in priorities %}<option value="{{ p }}" {% if p == case.priority %}selected{% endif %}>{{ p }}</option>{% endfor %}</select></div>
+        <div class="field"><label>Type</label><select name="type">{% for t in types %}<option value="{{ t }}" {% if t == case.type %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
+      </div>
+      <div class="field"><label>Status</label><select name="status">{% for s in statuses %}<option value="{{ s }}" {% if s == case.status %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Preconditions</label><textarea name="preconditions">{{ case.preconditions }}</textarea></div>
+      <div class="field"><label>Steps</label><textarea name="steps" required>{% for step in case.steps %}{{ step.action }}{% if not loop.last %}
+{% endif %}{% endfor %}</textarea><div class="hint">One step per line.</div></div>
+      <div class="field"><label>Expected result</label><textarea name="expected_result" required>{{ case.expected_result }}</textarea></div>
+      <div class="actions">
+        <button class="primary" type="submit">Save changes</button>
+        <a class="cancel" href="{{ url_for('index') }}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</main>
+</body>
+</html>
+"""
+
+
+@app.get("/test-cases/<case_key>/edit")
+def edit_case(case_key):
     case = db.session.scalar(
         db.select(TestCase).where(TestCase.case_key == case_key)
     )
     if case is None:
         return "Test case not found.", 404
 
-    new_case_key = request.form.get("new_case_key", "").strip().upper()
-    if not new_case_key:
-        return "Test case ID is required.", 400
-    if new_case_key == case.case_key:
-        return redirect(url_for("index"))
+    return render_template_string(
+        EDIT_PAGE_HTML,
+        case=case,
+        priorities=["Low", "Medium", "High", "Critical"],
+        types=["Manual", "Automated"],
+        statuses=["Draft", "Ready", "Passed", "Failed", "Blocked"],
+    )
 
-    key_error = validate_case_key(new_case_key)
-    if key_error:
-        return key_error, 400
+
+@app.post("/test-cases/<case_key>/edit")
+def update_case(case_key):
+    case = db.session.scalar(
+        db.select(TestCase).where(TestCase.case_key == case_key)
+    )
+    if case is None:
+        return "Test case not found.", 404
+
+    new_case_key = request.form.get("case_key", "").strip().upper()
+    title = request.form.get("title", "").strip()
+    jira_key = request.form.get("jira_key", "").strip().upper()
+    priority = request.form.get("priority", "").strip()
+    case_type = request.form.get("type", "").strip()
+    status = request.form.get("status", "").strip()
+    preconditions = request.form.get("preconditions", "").strip()
+    steps = normalize_lines(request.form.get("steps", ""))
+    expected_result = request.form.get("expected_result", "").strip()
+
+    if not new_case_key or not title or not steps or not expected_result:
+        return "Test case ID, title, steps and expected result are required.", 400
+    if jira_key and not JIRA_KEY_PATTERN.match(jira_key):
+        return "Jira key must look like SCRUM-6.", 400
+    if priority not in PRIORITIES or case_type not in TYPES or status not in STATUSES:
+        return "Invalid test case metadata.", 400
+
+    if new_case_key != case.case_key:
+        key_error = validate_case_key(new_case_key)
+        if key_error:
+            return key_error, 400
 
     case.case_key = new_case_key
+    case.title = title
+    case.jira_key = jira_key or None
+    case.priority = priority
+    case.type = case_type
+    case.status = status
+    case.preconditions = preconditions
+    case.expected_result = expected_result
     case.updated_at = datetime.now(timezone.utc)
+    case.steps = [
+        TestStep(position=index, action=action)
+        for index, action in enumerate(steps, start=1)
+    ]
+
     db.session.commit()
     return redirect(url_for("index"))
 
