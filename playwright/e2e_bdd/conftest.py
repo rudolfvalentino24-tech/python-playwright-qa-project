@@ -75,32 +75,31 @@ def pytest_configure(config):
         )
 
 
-def pytest_collection_modifyitems(config, items):
+def _scenario_case_id(request, scenario):
+    """Resolve a stable Test Hub case ID from a pytest-bdd scenario/example."""
+    callspec = getattr(request.node, "callspec", None)
+    if callspec:
+        for value in callspec.params.values():
+            if isinstance(value, dict):
+                case_id = str(value.get("case_id", "")).strip().upper()
+                if case_id:
+                    return case_id
+
+    name = getattr(scenario, "name", "") or ""
+    match = re.match(r"^([A-Z0-9]+(?:-[A-Z0-9]+)+)\\b", name.strip().upper())
+    return match.group(1) if match else None
+
+
+def pytest_bdd_before_scenario(request, feature, scenario):
+    """Skip BDD scenarios that were not selected by the Test Hub run."""
     if not TEST_HUB_CASE_IDS:
         return
 
-    selected = []
-    deselected = []
-    found = set()
+    case_id = _scenario_case_id(request, scenario)
+    if case_id not in TEST_HUB_CASE_IDS:
+        pytest.skip("Not selected by Test Hub")
 
-    for item in items:
-        case_id = _case_id_for_item(item)
-        if case_id in TEST_HUB_CASE_IDS:
-            selected.append(item)
-            found.add(case_id)
-            _case_id_by_nodeid[item.nodeid] = case_id
-        else:
-            deselected.append(item)
-
-    missing = TEST_HUB_CASE_IDS - found
-    if missing:
-        raise pytest.UsageError(
-            "Test Hub case IDs were not found in pytest collection: "
-            + ", ".join(sorted(missing))
-        )
-
-    config.hook.pytest_deselected(items=deselected)
-    items[:] = selected
+    _case_id_by_nodeid[request.node.nodeid] = case_id
 
 
 def _report_result(report, result):
@@ -148,12 +147,19 @@ def pytest_sessionfinish(session, exitstatus):
     if not TEST_HUB_RUN_ID or not TEST_HUB_URL or not TEST_HUB_API_KEY:
         return
 
-    runner_status = "Completed" if exitstatus in (0, 1) else "Error"
+    reported_ids = set(_case_id_by_nodeid.values())
+    missing = TEST_HUB_CASE_IDS - reported_ids
+    runner_status = "Completed" if exitstatus in (0, 1) and not missing else "Error"
+
+    message = f"pytest finished with exit code {exitstatus}."
+    if missing:
+        message += " Selected case IDs were not reached: " + ", ".join(sorted(missing))
+
     _hub_post(
         f"/api/test-runs/{TEST_HUB_RUN_ID}/finish",
         {
             "status": runner_status,
-            "message": f"pytest finished with exit code {exitstatus}.",
+            "message": message,
         },
     )
 
