@@ -45,6 +45,7 @@ PRIORITIES = {"Low", "Medium", "High", "Critical"}
 TYPES = {"Manual", "Automated"}
 STATUSES = {"Draft", "Ready", "Passed", "Failed", "Blocked"}
 RESULT_STATUSES = {"Passed", "Failed", "Blocked", "Skipped"}
+RUN_PRESETS = {"Custom", "Smoke", "Regression", "Full Release"}
 JIRA_KEY_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*-\d+$")
 CASE_KEY_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9_-]{2,63}$")
 
@@ -61,6 +62,7 @@ class TestCase(db.Model):
     priority = db.Column(db.String(20), nullable=False, default="Medium")
     type = db.Column(db.String(20), nullable=False, default="Manual")
     status = db.Column(db.String(20), nullable=False, default="Draft", index=True)
+    suite_tags = db.Column(db.String(250), nullable=False, default="")
     preconditions = db.Column(db.Text, nullable=False, default="")
     expected_result = db.Column(db.Text, nullable=False)
     created_at = db.Column(
@@ -101,6 +103,14 @@ class TestCase(db.Model):
     def jira_keys(self):
         return [link.jira_key for link in self.jira_links]
 
+    @property
+    def suite_tag_list(self):
+        return [
+            tag.strip().lower()
+            for tag in (self.suite_tags or "").split(",")
+            if tag.strip()
+        ]
+
     def to_dict(self):
         jira_keys = self.jira_keys
         return {
@@ -113,6 +123,7 @@ class TestCase(db.Model):
             "priority": self.priority,
             "type": self.type,
             "status": self.status,
+            "suite_tags": self.suite_tag_list,
             "preconditions": self.preconditions,
             "steps": [step.action for step in self.steps],
             "expected_result": self.expected_result,
@@ -188,6 +199,7 @@ class TestRun(db.Model):
         index=True,
     )
     name = db.Column(db.String(250), nullable=False)
+    preset = db.Column(db.String(30), nullable=False, default="Custom")
     execution_type = db.Column(db.String(20), nullable=False, default="Manual")
     environment = db.Column(db.String(80), nullable=False, default="")
     execution_status = db.Column(db.String(20), nullable=False, default="Planned", index=True)
@@ -276,6 +288,8 @@ class TestResult(db.Model):
         index=True,
     )
     duration_ms = db.Column(db.Integer, nullable=True)
+    runner_build_number = db.Column(db.String(50), nullable=False, default="")
+    runner_build_url = db.Column(db.String(500), nullable=False, default="")
     notes = db.Column(db.Text, nullable=False, default="")
     error_message = db.Column(db.Text, nullable=False, default="")
 
@@ -373,16 +387,25 @@ def test_run_latest_results(run):
 
 
 def test_run_summary(run):
-    latest = test_run_latest_results(run)
+    attempts_by_case = {}
+    for result in run.results:
+        attempts_by_case.setdefault(result.case_key_snapshot, []).append(result)
+
     counts = {status: 0 for status in RESULT_STATUSES}
     rows = []
 
     for item in run.items:
-        result = latest.get(item.case_key_snapshot)
+        attempts = attempts_by_case.get(item.case_key_snapshot, [])
+        result = attempts[-1] if attempts else None
         status = result.result if result else "Not Run"
         if result:
             counts[result.result] += 1
-        rows.append({"item": item, "result": result, "status": status})
+        rows.append({
+            "item": item,
+            "result": result,
+            "status": status,
+            "attempts": attempts,
+        })
 
     total = len(run.items)
     executed = sum(counts.values())
@@ -401,6 +424,7 @@ def test_run_summary(run):
         "skipped": counts["Skipped"],
         "progress": progress,
         "pass_rate": pass_rate,
+        "attempts": len(run.results),
         "rows": rows,
     }
 
@@ -1224,7 +1248,7 @@ label{display:block;margin:13px 0 6px;font-size:12px;font-weight:800;color:#4152
             <div>
               <a class="run-title" href="{{ url_for('test_run_details', run_id=row.run.id) }}">{{ row.run.name }}</a>
               <div class="muted">
-                {{ row.run.execution_type }}{% if row.run.environment %} · {{ row.run.environment }}{% endif %}
+                {{ row.run.execution_type }} · {{ row.run.preset }}{% if row.run.environment %} · {{ row.run.environment }}{% endif %}
                 {% if row.run.release %} · Release {{ row.run.release.version }}{% endif %}
               </div>
             </div>
@@ -1245,6 +1269,14 @@ label{display:block;margin:13px 0 6px;font-size:12px;font-weight:800;color:#4152
       <form method="post" action="{{ url_for('create_test_run') }}">
         <label>Name</label>
         <input name="name" required placeholder="Release 1.0.0 - Regression">
+        <label>Preset</label>
+        <select id="runPreset" name="preset">
+          <option>Custom</option>
+          <option>Smoke</option>
+          <option>Regression</option>
+          <option>Full Release</option>
+        </select>
+        <div class="muted">Smoke follows @smoke BDD tags. Regression and Full Release use imported BDD suite tags.</div>
         <label>Release</label>
         <select name="release_id">
           <option value="">No release</option>
@@ -1255,7 +1287,7 @@ label{display:block;margin:13px 0 6px;font-size:12px;font-weight:800;color:#4152
         <label>Environment</label>
         <input name="environment" placeholder="Staging">
         <label>Execution type</label>
-        <select name="execution_type"><option>Manual</option><option>Automated</option></select>
+        <select id="executionType" name="execution_type"><option>Manual</option><option>Automated</option></select>
         <label>Test cases</label>
         <div class="case-tools">
           <input id="runCaseSearch" type="search" placeholder="Search ID, title or feature...">
@@ -1264,9 +1296,9 @@ label{display:block;margin:13px 0 6px;font-size:12px;font-weight:800;color:#4152
         </div>
         <div id="runCaseList" class="case-list">
           {% for case in cases %}
-            <label class="case-option" data-search="{{ (case.case_key ~ ' ' ~ case.title ~ ' ' ~ case.feature_name)|lower }}">
+            <label class="case-option" data-search="{{ (case.case_key ~ ' ' ~ case.title ~ ' ' ~ case.feature_name)|lower }}" data-suites="{{ case.suite_tags|lower }}">
               <input type="checkbox" name="case_ids" value="{{ case.id }}">
-              <span><strong>{{ case.case_key }} — {{ case.title }}</strong>{{ case.feature_name }} · {{ case.type }}</span>
+              <span><strong>{{ case.case_key }} — {{ case.title }}</strong>{{ case.feature_name }} · {{ case.type }}{% if case.suite_tags %} · {{ case.suite_tags }}{% endif %}</span>
             </label>
           {% else %}<div class="empty">Create test cases first.</div>{% endfor %}
         </div>
@@ -1277,6 +1309,28 @@ label{display:block;margin:13px 0 6px;font-size:12px;font-weight:800;color:#4152
 </main>
 <script>
 const runCaseSearch=document.getElementById('runCaseSearch');
+const runPreset=document.getElementById('runPreset');
+const executionType=document.getElementById('executionType');
+
+function applyPreset(){
+  const preset=runPreset.value;
+  if(preset==='Custom') return;
+
+  const tag={
+    'Smoke':'smoke',
+    'Regression':'regression',
+    'Full Release':'release'
+  }[preset];
+
+  executionType.value='Automated';
+  document.querySelectorAll('.case-option').forEach(item=>{
+    const suites=(item.dataset.suites || '').split(',').map(value=>value.trim());
+    item.querySelector('input[type="checkbox"]').checked=suites.includes(tag);
+  });
+}
+
+runPreset.addEventListener('change',applyPreset);
+
 runCaseSearch.addEventListener('input',()=>{
   const query=runCaseSearch.value.trim().toLowerCase();
   document.querySelectorAll('.case-option').forEach(item=>{
@@ -1309,7 +1363,7 @@ header{padding:16px 30px;background:rgba(20,42,82,.94);color:#fff}.brand{display
 .stats{display:grid;grid-template-columns:repeat(7,1fr);gap:11px;margin-bottom:20px}.stat{padding:15px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:0 10px 28px rgba(35,61,108,.06)}.stat strong{display:block;font-size:24px;color:#17325d}.stat span{display:block;margin-top:5px;font-size:12px;color:var(--muted);font-weight:650}
 .card{padding:21px;border:1px solid var(--border);border-radius:18px;background:var(--surface);box-shadow:0 16px 42px rgba(35,61,108,.07)}.progress{height:10px;margin:12px 0 20px;border-radius:999px;background:#e7ecf4;overflow:hidden}.progress>div{height:100%;background:linear-gradient(90deg,#2f66e8,#2475ff)}
 .run-row{display:grid;grid-template-columns:100px minmax(260px,1fr) 130px minmax(340px,1.1fr);gap:12px;align-items:center;padding:14px 0;border-top:1px solid #e7ebf2}.run-row:first-of-type{border-top:0}.badge{display:inline-block;width:max-content;padding:5px 8px;border-radius:999px;font-size:12px;font-weight:800}.Passed{background:#dcfce7;color:#166534}.Failed{background:#fee2e2;color:#991b1b}.Blocked{background:#fef3c7;color:#92400e}.Skipped{background:#e5e7eb;color:#4b5563}.NotRun{background:#edf1f7;color:#526174}
-.case-link{color:#243854;text-decoration:none;font-weight:850}.case-link:hover{color:#2468e5}.muted{margin-top:4px;color:var(--muted);font-size:12px}.result-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.result-form input{flex:1;min-width:120px;height:37px;padding:0 9px;border:1px solid #ccd5e4;border-radius:9px;font:inherit}.result-form button{border:0;border-radius:8px;padding:8px 9px;font:inherit;font-size:12px;font-weight:800;cursor:pointer}.pass{background:#dcfce7;color:#166534}.fail{background:#fee2e2;color:#991b1b}.block{background:#fef3c7;color:#92400e}.skip{background:#e5e7eb;color:#4b5563}
+.case-link{color:#243854;text-decoration:none;font-weight:850}.case-link:hover{color:#2468e5}.muted{margin-top:4px;color:var(--muted);font-size:12px}.attempt-history{margin-top:8px}.attempt-history summary{cursor:pointer;font-size:12px;font-weight:800;color:#456080}.attempt-row{display:flex;gap:9px;flex-wrap:wrap;padding:7px 0;border-top:1px solid #edf0f5;font-size:12px;color:#65758a}.attempt-row:first-of-type{margin-top:6px}.attempt-status{font-weight:800}.attempt-build{color:#2468e5;text-decoration:none;font-weight:750}.result-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.result-form input{flex:1;min-width:120px;height:37px;padding:0 9px;border:1px solid #ccd5e4;border-radius:9px;font:inherit}.result-form button{border:0;border-radius:8px;padding:8px 9px;font:inherit;font-size:12px;font-weight:800;cursor:pointer}.pass{background:#dcfce7;color:#166534}.fail{background:#fee2e2;color:#991b1b}.block{background:#fef3c7;color:#92400e}.skip{background:#e5e7eb;color:#4b5563}
 @media(max-width:950px){.stats{grid-template-columns:repeat(3,1fr)}.run-row{grid-template-columns:90px 1fr}.result-form{grid-column:1/-1}.run-row>.muted{grid-column:2}}
 @media(max-width:560px){header{padding:13px 16px}.wrap{padding:22px 14px}.top{flex-direction:column}.stats{grid-template-columns:1fr 1fr}}
 </style>
@@ -1321,7 +1375,7 @@ header{padding:16px 30px;background:rgba(20,42,82,.94);color:#fff}.brand{display
     <div>
       <h1>{{ run.name }}</h1>
       <div class="subtitle">
-        {{ run.execution_type }}{% if run.environment %} · {{ run.environment }}{% endif %}
+        {{ run.execution_type }} · {{ run.preset }}{% if run.environment %} · {{ run.environment }}{% endif %}
         {% if run.release %} · Release {{ run.release.version }}{% endif %}
         · <strong>{{ run.execution_status }}</strong>
       </div>
@@ -1377,6 +1431,26 @@ header{padding:16px 30px;background:rgba(20,42,82,.94);color:#fff}.brand{display
             <details class="muted" style="margin-top:7px">
               <summary style="cursor:pointer;font-weight:750;color:#991b1b">Failure details</summary>
               <pre style="white-space:pre-wrap;overflow:auto;margin:7px 0 0">{{ row.result.error_message }}</pre>
+            </details>
+          {% endif %}
+          {% if row.attempts|length > 1 %}
+            <details class="attempt-history">
+              <summary>{{ row.attempts|length }} execution attempts</summary>
+              {% for attempt in row.attempts %}
+                <div class="attempt-row">
+                  <span>Attempt {{ loop.index }}</span>
+                  <span class="attempt-status">{{ attempt.result }}</span>
+                  {% if attempt.runner_build_url %}
+                    <a class="attempt-build" href="{{ attempt.runner_build_url }}" target="_blank" rel="noopener">Build #{{ attempt.runner_build_number or '?' }}</a>
+                  {% elif attempt.runner_build_number %}
+                    <span>Build #{{ attempt.runner_build_number }}</span>
+                  {% endif %}
+                  {% if attempt.duration_ms is not none %}
+                    <span>{% if attempt.duration_ms >= 1000 %}{{ '%.2f'|format(attempt.duration_ms / 1000) }} s{% else %}{{ attempt.duration_ms }} ms{% endif %}</span>
+                  {% endif %}
+                  <span>{{ attempt.executed_at.strftime('%d %b %Y %H:%M') }}</span>
+                </div>
+              {% endfor %}
             </details>
           {% endif %}
         </div>
@@ -1689,8 +1763,14 @@ label{display:block;margin:13px 0 6px;font-size:12px;font-weight:800;color:#4152
           {% if result.test_run.release %} · <a href="{{ url_for('release_details', release_id=result.test_run.release.id) }}" style="color:#2468e5;text-decoration:none;font-weight:750">{{ result.test_run.release.version }}</a>{% endif %}
           {% if result.notes %}<div>{{ result.notes }}</div>{% endif %}
         </div>
-        <div class="result-date">{{ result.test_run.execution_type }}</div>
-        <div class="result-date">{{ result.executed_at.strftime('%d %b %Y %H:%M') }}</div>
+        <div class="result-date">
+          {{ result.test_run.execution_type }}
+          {% if result.runner_build_url %} · <a href="{{ result.runner_build_url }}" target="_blank" rel="noopener">Build #{{ result.runner_build_number or '?' }}</a>{% endif %}
+        </div>
+        <div class="result-date">
+          {{ result.executed_at.strftime('%d %b %Y %H:%M') }}
+          {% if result.duration_ms is not none %} · {% if result.duration_ms >= 1000 %}{{ '%.2f'|format(result.duration_ms / 1000) }} s{% else %}{{ result.duration_ms }} ms{% endif %}{% endif %}
+        </div>
       </div>
     {% else %}
       <div class="empty">No execution history yet. Record the first result above.</div>
@@ -1960,6 +2040,7 @@ def test_runs():
 @app.post("/test-runs")
 def create_test_run():
     name = request.form.get("name", "").strip()
+    preset = request.form.get("preset", "Custom").strip()
     release_id_value = request.form.get("release_id", "").strip()
     environment = request.form.get("environment", "").strip()
     execution_type = request.form.get("execution_type", "Manual").strip()
@@ -1967,10 +2048,10 @@ def create_test_run():
 
     if not name:
         return "Test run name is required.", 400
+    if preset not in RUN_PRESETS:
+        return "Invalid test run preset.", 400
     if execution_type not in TYPES:
         return "Invalid execution type.", 400
-    if not case_id_values:
-        return "Select at least one test case.", 400
 
     release = None
     if release_id_value:
@@ -1981,24 +2062,48 @@ def create_test_run():
         if release is None:
             return "Release not found.", 404
 
-    case_ids = []
-    for raw_id in case_id_values:
-        try:
-            case_ids.append(int(raw_id))
-        except ValueError:
-            return "Invalid test case selection.", 400
+    if preset == "Custom":
+        if not case_id_values:
+            return "Select at least one test case.", 400
 
-    cases = db.session.scalars(
-        db.select(TestCase)
-        .where(TestCase.id.in_(case_ids))
-        .order_by(TestCase.feature, TestCase.case_key)
-    ).all()
-    if len(cases) != len(set(case_ids)):
-        return "One or more selected test cases no longer exist.", 400
+        case_ids = []
+        for raw_id in case_id_values:
+            try:
+                case_ids.append(int(raw_id))
+            except ValueError:
+                return "Invalid test case selection.", 400
+
+        cases = db.session.scalars(
+            db.select(TestCase)
+            .where(TestCase.id.in_(case_ids))
+            .order_by(TestCase.feature, TestCase.case_key)
+        ).all()
+        if len(cases) != len(set(case_ids)):
+            return "One or more selected test cases no longer exist.", 400
+    else:
+        preset_tag = {
+            "Smoke": "smoke",
+            "Regression": "regression",
+            "Full Release": "release",
+        }[preset]
+        all_cases = db.session.scalars(
+            db.select(TestCase).order_by(TestCase.feature, TestCase.case_key)
+        ).all()
+        cases = [
+            case for case in all_cases
+            if case.type == "Automated" and preset_tag in case.suite_tag_list
+        ]
+        execution_type = "Automated"
+        if not cases:
+            return (
+                f"No Automated test cases are tagged for the {preset} preset. "
+                "Refresh the BDD import with --update-existing."
+            ), 400
 
     run = TestRun(
         release=release,
         name=name,
+        preset=preset,
         execution_type=execution_type,
         environment=environment or (release.environment if release else ""),
         started_at=datetime.now(timezone.utc),
@@ -2505,6 +2610,8 @@ def api_record_test_run_results(run_id):
             result=result_value,
             executed_at=now,
             duration_ms=duration_ms,
+            runner_build_number=str(item_data.get("build_number", "") or "").strip(),
+            runner_build_url=str(item_data.get("build_url", "") or "").strip(),
             notes=str(item_data.get("notes", "") or ""),
             error_message=str(item_data.get("error_message", "") or ""),
             case_key_snapshot=item.case_key_snapshot,
@@ -2571,6 +2678,7 @@ def api_test_runs():
         payload.append({
             "id": run.id,
             "name": run.name,
+            "preset": run.preset,
             "release_id": run.release_id,
             "release": run.release.version if run.release else None,
             "execution_type": run.execution_type,
@@ -2658,6 +2766,9 @@ def migrate_schema_and_legacy_jira_links():
     if "feature" not in columns:
         db.session.execute(text("ALTER TABLE test_cases ADD COLUMN feature VARCHAR(120)"))
         db.session.commit()
+    if "suite_tags" not in columns:
+        db.session.execute(text("ALTER TABLE test_cases ADD COLUMN suite_tags VARCHAR(250) DEFAULT '' NOT NULL"))
+        db.session.commit()
 
     # Existing databases already have test_runs, so add the nullable release link once.
     inspector = inspect(db.engine)
@@ -2665,6 +2776,9 @@ def migrate_schema_and_legacy_jira_links():
         run_columns = {column["name"] for column in inspector.get_columns("test_runs")}
         if "release_id" not in run_columns:
             db.session.execute(text("ALTER TABLE test_runs ADD COLUMN release_id INTEGER"))
+            db.session.commit()
+        if "preset" not in run_columns:
+            db.session.execute(text("ALTER TABLE test_runs ADD COLUMN preset VARCHAR(30) DEFAULT 'Custom' NOT NULL"))
             db.session.commit()
         if "execution_status" not in run_columns:
             db.session.execute(text("ALTER TABLE test_runs ADD COLUMN execution_status VARCHAR(20) DEFAULT 'Planned' NOT NULL"))
@@ -2686,6 +2800,16 @@ def migrate_schema_and_legacy_jira_links():
             db.session.commit()
         if "jenkins_artifacts_url" not in run_columns:
             db.session.execute(text("ALTER TABLE test_runs ADD COLUMN jenkins_artifacts_url VARCHAR(500) DEFAULT '' NOT NULL"))
+            db.session.commit()
+
+    inspector = inspect(db.engine)
+    if "test_results" in inspector.get_table_names():
+        result_columns = {column["name"] for column in inspector.get_columns("test_results")}
+        if "runner_build_number" not in result_columns:
+            db.session.execute(text("ALTER TABLE test_results ADD COLUMN runner_build_number VARCHAR(50) DEFAULT '' NOT NULL"))
+            db.session.commit()
+        if "runner_build_url" not in result_columns:
+            db.session.execute(text("ALTER TABLE test_results ADD COLUMN runner_build_url VARCHAR(500) DEFAULT '' NOT NULL"))
             db.session.commit()
 
     # Move any legacy single Jira story into the new many-to-many table once.
