@@ -425,7 +425,7 @@ function filterCases(){
 
 function selectedJiraKeys(prefix){
   const input=document.getElementById(prefix+'JiraKeys');
-  return new Set(input.value.split(/[\s,;]+/).map(v=>v.trim().toUpperCase()).filter(Boolean));
+  return new Set(input.value.split(/[\\s,;]+/).map(v=>v.trim().toUpperCase()).filter(Boolean));
 }
 
 function toggleJiraStory(prefix,key){
@@ -451,12 +451,16 @@ function renderJiraStories(prefix){
 
   list.innerHTML=matches.map(story=>{
     const isSelected=selected.has(story.key);
-    return '<button type="button" class="jira-story '+(isSelected?'selected':'')+'" onclick="toggleJiraStory(\''+prefix+'\',\''+story.key+'\')">'+
-      '<span class="jira-story-key">'+story.key+'</span> — '+
-      '<span class="jira-story-summary">'+escapeHtml(story.summary)+'</span>'+
-      (story.status?' <small>('+escapeHtml(story.status)+')</small>':'')+
-      '</button>';
+    return `<button type="button" class="jira-story ${isSelected?'selected':''}" data-jira-key="${story.key}">
+      <span class="jira-story-key">${story.key}</span> —
+      <span class="jira-story-summary">${escapeHtml(story.summary)}</span>
+      ${story.status?` <small>(${escapeHtml(story.status)})</small>`:''}
+    </button>`;
   }).join('');
+
+  list.querySelectorAll('.jira-story').forEach(button=>{
+    button.addEventListener('click',()=>toggleJiraStory(prefix,button.dataset.jiraKey));
+  });
 }
 
 function escapeHtml(value){
@@ -614,7 +618,7 @@ textarea{min-height:100px;resize:vertical}.actions{display:flex;gap:10px;margin-
 let editJiraStories=[];
 
 function editSelectedJiraKeys(){
-  return new Set(document.getElementById('editJiraKeys').value.split(/[\s,;]+/).map(v=>v.trim().toUpperCase()).filter(Boolean));
+  return new Set(document.getElementById('editJiraKeys').value.split(/[\\s,;]+/).map(v=>v.trim().toUpperCase()).filter(Boolean));
 }
 
 function escapeEditHtml(value){
@@ -643,11 +647,16 @@ function renderEditJiraStories(){
   }
   list.innerHTML=matches.map(story=>{
     const isSelected=selected.has(story.key);
-    return '<button type="button" class="jira-story '+(isSelected?'selected':'')+'" onclick="toggleEditJiraStory(\''+story.key+'\')">'+
-      '<span class="jira-story-key">'+story.key+'</span> — '+escapeEditHtml(story.summary)+
-      (story.status?' <small>('+escapeEditHtml(story.status)+')</small>':'')+
-      '</button>';
+    return `<button type="button" class="jira-story ${isSelected?'selected':''}" data-jira-key="${story.key}">
+      <span class="jira-story-key">${story.key}</span> —
+      ${escapeEditHtml(story.summary)}
+      ${story.status?` <small>(${escapeEditHtml(story.status)})</small>`:''}
+    </button>`;
   }).join('');
+
+  list.querySelectorAll('.jira-story').forEach(button=>{
+    button.addEventListener('click',()=>toggleEditJiraStory(button.dataset.jiraKey));
+  });
 }
 
 async function loadEditJiraStories(){
