@@ -20,3 +20,16 @@ services:
     envVars:
       - key: SECRET_KEY
         generateValue: true
+
+  - type: web
+    name: python-playwright-test-hub
+    runtime: python
+    plan: free
+    rootDir: test_hub
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JIRA_BASE_URL
+        value: https://qa-test-store.atlassian.net/browse
