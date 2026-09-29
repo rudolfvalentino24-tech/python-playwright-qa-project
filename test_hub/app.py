@@ -8,6 +8,7 @@ import json
 import os
 import re
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 from datetime import datetime, timezone
 
@@ -17,6 +18,7 @@ JIRA_BASE_URL = f"{JIRA_SITE_URL}/browse"
 JIRA_PROJECT_KEY = os.environ.get("JIRA_PROJECT_KEY", "SCRUM").strip().upper()
 JIRA_EMAIL = os.environ.get("JIRA_EMAIL", "").strip()
 JIRA_API_TOKEN = os.environ.get("JIRA_API_TOKEN", "").strip()
+TEST_HUB_BASE_URL = os.environ.get("TEST_HUB_BASE_URL", "http://127.0.0.1:3000").rstrip("/")
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "test-hub-dev-secret")
@@ -197,8 +199,8 @@ def set_jira_links(case, jira_keys):
             case.jira_links.append(TestCaseJiraLink(jira_key=jira_key))
 
 
-def fetch_jira_stories():
-    """Fetch Story issues from Jira for the searchable multi-select."""
+def jira_api_request(path, method="GET", body=None):
+    """Call Jira Cloud REST API using the Test Hub Jira credentials."""
     if not JIRA_EMAIL or not JIRA_API_TOKEN:
         raise RuntimeError(
             "Jira API credentials are not configured. Set JIRA_EMAIL and JIRA_API_TOKEN."
@@ -207,16 +209,11 @@ def fetch_jira_stories():
     auth = base64.b64encode(
         f"{JIRA_EMAIL}:{JIRA_API_TOKEN}".encode("utf-8")
     ).decode("ascii")
-    payload = json.dumps({
-        "jql": f'project = "{JIRA_PROJECT_KEY}" AND issuetype = Story ORDER BY created DESC',
-        "fields": ["summary", "status"],
-        "maxResults": 100,
-    }).encode("utf-8")
-
+    payload = json.dumps(body).encode("utf-8") if body is not None else None
     jira_request = Request(
-        f"{JIRA_SITE_URL}/rest/api/3/search/jql",
+        f"{JIRA_SITE_URL}{path}",
         data=payload,
-        method="POST",
+        method=method,
         headers={
             "Accept": "application/json",
             "Content-Type": "application/json",
@@ -226,15 +223,131 @@ def fetch_jira_stories():
 
     try:
         with urlopen(jira_request, timeout=10) as response:
-            data = json.loads(response.read().decode("utf-8"))
+            raw = response.read().decode("utf-8")
+            return json.loads(raw) if raw else None
     except HTTPError as exc:
         if exc.code == 401:
             raise RuntimeError("Jira authentication failed. Check JIRA_EMAIL and JIRA_API_TOKEN.") from exc
         if exc.code == 403:
-            raise RuntimeError("Jira denied access to the project. Check Jira permissions.") from exc
+            raise RuntimeError("Jira denied the requested action. Check Jira Link issues permission.") from exc
+        if exc.code == 404:
+            raise RuntimeError("Jira ticket or web link was not found.") from exc
         raise RuntimeError(f"Jira returned HTTP {exc.code}.") from exc
     except URLError as exc:
         raise RuntimeError("Test Hub could not connect to Jira.") from exc
+
+
+def test_hub_jira_url(jira_key):
+    return f"{TEST_HUB_BASE_URL}/jira/{jira_key}"
+
+
+def test_hub_jira_global_id(jira_key):
+    return f"system=test-hub&id={jira_key}"
+
+
+def test_hub_remote_link_body(jira_key):
+    return {
+        "globalId": test_hub_jira_global_id(jira_key),
+        "relationship": "tests",
+        "object": {
+            "url": test_hub_jira_url(jira_key),
+            "title": "Test Hub — View test cases",
+            "summary": f"Open all Test Hub cases linked to {jira_key}",
+        },
+    }
+
+
+def matching_test_hub_remote_links(jira_key, remote_links):
+    target_url = test_hub_jira_url(jira_key)
+    target_global_id = test_hub_jira_global_id(jira_key)
+    matches = []
+
+    for link in remote_links or []:
+        obj = link.get("object") or {}
+        if (
+            link.get("globalId") == target_global_id
+            or obj.get("url") == target_url
+        ):
+            matches.append(link)
+
+    return matches
+
+
+def ensure_jira_test_hub_web_link(jira_key):
+    """Ensure Jira has exactly one Test Hub web link for this story."""
+    encoded_key = quote(jira_key, safe="")
+    path = f"/rest/api/3/issue/{encoded_key}/remotelink"
+    remote_links = jira_api_request(path) or []
+    matches = matching_test_hub_remote_links(jira_key, remote_links)
+    body = test_hub_remote_link_body(jira_key)
+
+    if matches:
+        primary = matches[0]
+        jira_api_request(
+            f"{path}/{primary['id']}",
+            method="PUT",
+            body=body,
+        )
+        for duplicate in matches[1:]:
+            jira_api_request(
+                f"{path}/{duplicate['id']}",
+                method="DELETE",
+            )
+    else:
+        jira_api_request(path, method="POST", body=body)
+
+
+def remove_jira_test_hub_web_link(jira_key):
+    """Remove Test Hub's web link when no Test Hub cases remain for this story."""
+    remaining = db.session.scalar(
+        db.select(db.func.count(TestCaseJiraLink.id)).where(
+            TestCaseJiraLink.jira_key == jira_key
+        )
+    )
+    if remaining:
+        return
+
+    encoded_key = quote(jira_key, safe="")
+    path = f"/rest/api/3/issue/{encoded_key}/remotelink"
+    remote_links = jira_api_request(path) or []
+
+    for link in matching_test_hub_remote_links(jira_key, remote_links):
+        jira_api_request(
+            f"{path}/{link['id']}",
+            method="DELETE",
+        )
+
+
+def sync_jira_test_hub_web_links(current_keys, removed_keys=None):
+    """Keep Jira web links synchronized with Test Hub's many-to-many links."""
+    errors = []
+
+    for jira_key in sorted(set(current_keys)):
+        try:
+            ensure_jira_test_hub_web_link(jira_key)
+        except RuntimeError as exc:
+            errors.append(f"{jira_key}: {exc}")
+
+    for jira_key in sorted(set(removed_keys or [])):
+        try:
+            remove_jira_test_hub_web_link(jira_key)
+        except RuntimeError as exc:
+            errors.append(f"{jira_key}: {exc}")
+
+    return errors
+
+
+def fetch_jira_stories():
+    """Fetch Story issues from Jira for the searchable multi-select."""
+    data = jira_api_request(
+        "/rest/api/3/search/jql",
+        method="POST",
+        body={
+            "jql": f'project = "{JIRA_PROJECT_KEY}" AND issuetype = Story ORDER BY created DESC',
+            "fields": ["summary", "status"],
+            "maxResults": 100,
+        },
+    ) or {}
 
     stories = []
     for issue in data.get("issues", []):
@@ -280,7 +393,7 @@ button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:60
 .case{border-top:1px solid var(--border);padding:14px}.case:first-of-type{border-top:0}.case-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.case-title{font-weight:700}.meta{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.pill{font-size:12px;padding:3px 7px;border-radius:999px;background:#f1f2f4;color:#44546f}.jira{color:var(--accent);text-decoration:none;font-weight:700}.details{color:var(--muted);font-size:13px;white-space:pre-wrap}.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;align-items:center}.button-link{display:inline-block;text-decoration:none;border-radius:7px;padding:9px 13px;font-weight:600}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field{margin-bottom:11px}.field label{display:block;font-size:12px;font-weight:700;color:#44546f;margin-bottom:5px}.hint{font-size:12px;color:var(--muted);margin-top:5px}.empty{text-align:center;color:var(--muted);padding:36px 10px}
 .jira-selected-list{display:flex;flex-direction:column;gap:7px;margin-bottom:8px}.jira-selected-empty{padding:10px;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-size:13px}.jira-selected-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#fafbfc}.jira-selected-main{flex:1;color:var(--text);text-decoration:none;min-width:0}.jira-selected-main:hover .jira-story-key{text-decoration:underline}.jira-story-key{font-weight:800;color:var(--accent)}.jira-story-summary{color:#44546f}.jira-open{color:var(--accent);text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap}.jira-remove{background:#ffebe6;color:var(--danger);padding:6px 9px;font-size:12px}
-.modal-backdrop{position:fixed;inset:0;background:rgba(23,43,77,.48);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}.modal-backdrop[hidden]{display:none}.jira-modal{width:min(720px,100%);max-height:82vh;background:#fff;border-radius:12px;box-shadow:0 18px 60px rgba(9,30,66,.28);display:flex;flex-direction:column}.jira-modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--border)}.jira-modal-head h3{margin:0}.jira-modal-body{padding:16px 18px;overflow:auto}.jira-modal-search{margin-bottom:12px}.jira-modal-list{display:flex;flex-direction:column;gap:6px;max-height:430px;overflow:auto}.jira-modal-ticket{width:100%;text-align:left;background:#fff;border:1px solid var(--border);padding:10px 12px;font-weight:500}.jira-modal-ticket.selected{border-color:var(--accent);background:#e9f2ff}.jira-modal-message{font-size:13px;color:var(--muted);padding:10px 2px}.jira-modal-actions{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border)}
+.sync-warning{margin-bottom:16px;padding:12px 14px;border:1px solid #f5cd47;border-radius:8px;background:#fff7d6;color:#7f5f01;font-size:13px}.modal-backdrop{position:fixed;inset:0;background:rgba(23,43,77,.48);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}.modal-backdrop[hidden]{display:none}.jira-modal{width:min(720px,100%);max-height:82vh;background:#fff;border-radius:12px;box-shadow:0 18px 60px rgba(9,30,66,.28);display:flex;flex-direction:column}.jira-modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--border)}.jira-modal-head h3{margin:0}.jira-modal-body{padding:16px 18px;overflow:auto}.jira-modal-search{margin-bottom:12px}.jira-modal-list{display:flex;flex-direction:column;gap:6px;max-height:430px;overflow:auto}.jira-modal-ticket{width:100%;text-align:left;background:#fff;border:1px solid var(--border);padding:10px 12px;font-weight:500}.jira-modal-ticket.selected{border-color:var(--accent);background:#e9f2ff}.jira-modal-message{font-size:13px;color:var(--muted);padding:10px 2px}.jira-modal-actions{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border)}
 @media(max-width:900px){.stats{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}}@media(max-width:520px){.stats{grid-template-columns:1fr}main{padding:14px}header{padding:14px 16px}}
 </style>
 </head>
@@ -290,6 +403,9 @@ button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:60
   <div style="font-size:13px;opacity:.8">Grouped by feature · linked to Jira stories</div>
 </header>
 <main>
+  {% if sync_warning %}
+    <div class="sync-warning"><strong>Jira sync warning:</strong> {{ sync_warning }}</div>
+  {% endif %}
   <section class="stats">
     <div class="stat"><strong>{{ stats.total }}</strong><span>Total test cases</span></div>
     <div class="stat"><strong>{{ stats.manual }}</strong><span>Manual</span></div>
@@ -834,6 +950,7 @@ def index():
         stats=stats,
         statuses=["Draft", "Ready", "Passed", "Failed", "Blocked"],
         jira_base=JIRA_BASE_URL.rstrip("/"),
+        sync_warning=request.args.get("jira_sync_error", ""),
     )
 
 
@@ -902,6 +1019,11 @@ def create_case():
     set_jira_links(case, jira_keys)
     db.session.add(case)
     db.session.commit()
+
+    sync_errors = sync_jira_test_hub_web_links(jira_keys)
+    if sync_errors:
+        return redirect(url_for("index", jira_sync_error=" | ".join(sync_errors)))
+
     return redirect(url_for("index"))
 
 
@@ -931,6 +1053,7 @@ def update_case(case_key):
     if case is None:
         return "Test case not found.", 404
 
+    old_jira_keys = set(case.jira_keys)
     new_case_key = request.form.get("case_key", "").strip().upper()
     feature = request.form.get("feature", "").strip()
     title = request.form.get("title", "").strip()
@@ -972,6 +1095,12 @@ def update_case(case_key):
     set_jira_links(case, jira_keys)
 
     db.session.commit()
+
+    removed_jira_keys = old_jira_keys - set(jira_keys)
+    sync_errors = sync_jira_test_hub_web_links(jira_keys, removed_jira_keys)
+    if sync_errors:
+        return redirect(url_for("index", jira_sync_error=" | ".join(sync_errors)))
+
     return redirect(url_for("index"))
 
 
@@ -1001,8 +1130,14 @@ def delete_case(case_key):
     if case is None:
         return "Test case not found.", 404
 
+    removed_jira_keys = set(case.jira_keys)
     db.session.delete(case)
     db.session.commit()
+
+    sync_errors = sync_jira_test_hub_web_links([], removed_jira_keys)
+    if sync_errors:
+        return redirect(url_for("index", jira_sync_error=" | ".join(sync_errors)))
+
     return redirect(url_for("index"))
 
 
