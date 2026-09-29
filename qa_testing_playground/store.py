@@ -58,80 +58,316 @@ LOGIN_HTML = r"""
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>QA Test Store - Login</title>
+
 <style>
-:root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#172033;background:#f5f7fb}
-*{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px}
-.card{width:min(420px,100%);background:#fff;border:1px solid #dce2ec;border-radius:16px;padding:28px}
-h1{margin:0 0 8px} p{color:#5f6b7a}
-label{display:block;font-weight:650;margin-top:14px}
-input{width:100%;padding:11px 12px;margin-top:6px;border:1px solid #b8c1cf;border-radius:9px;font-size:16px}
-button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:9px;background:#2457d6;color:#fff;font-weight:750;cursor:pointer}
-.error{display:none;margin-top:12px;padding:10px;background:#fff0f0;color:#9b1c1c;border-radius:8px}
+:root{
+    font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    color:#111827
+}
+
+*{
+    box-sizing:border-box
+}
+
+body{
+    margin:0;
+    min-height:100vh;
+    display:grid;
+    place-items:center;
+    padding:24px;
+    background:
+        linear-gradient(rgba(20,35,70,.08),rgba(20,35,70,.08)),
+        url("/static/store-login-bg.png") center/cover no-repeat fixed;
+}
+
+.card{
+    width:min(470px,100%);
+    padding:38px;
+    border:1px solid rgba(255,255,255,.65);
+    border-radius:22px;
+    background:rgba(255,255,255,.92);
+    box-shadow:0 24px 70px rgba(30,55,110,.22);
+    backdrop-filter:blur(14px);
+}
+
+.brand{
+    display:flex;
+    align-items:center;
+    gap:16px;
+    margin-bottom:6px
+}
+
+.brand-icon{
+    width:54px;
+    height:54px;
+    display:grid;
+    place-items:center;
+    border-radius:15px;
+    color:white;
+    font-size:27px;
+    background:linear-gradient(135deg,#6286ff,#1f63f2);
+    box-shadow:0 8px 22px rgba(37,99,235,.3)
+}
+
+h1{
+    margin:0;
+    font-size:34px;
+    letter-spacing:-.8px
+}
+
+.subtitle{
+    margin:4px 0 28px 70px;
+    color:#6b7280;
+    font-size:16px
+}
+
+label{
+    display:block;
+    margin-top:18px;
+    font-weight:700;
+    font-size:15px
+}
+
+.input-wrap{
+    position:relative;
+    margin-top:7px
+}
+
+.input-icon{
+    position:absolute;
+    left:15px;
+    top:50%;
+    transform:translateY(-50%);
+    color:#8190ad;
+    pointer-events:none
+}
+
+input[type="text"],
+input[type="password"]{
+    width:100%;
+    height:54px;
+    padding:0 16px 0 45px;
+    border:1px solid #ccd5e4;
+    border-radius:12px;
+    outline:none;
+    background:rgba(255,255,255,.82);
+    font:inherit;
+    transition:.2s ease
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus{
+    border-color:#3b73ef;
+    box-shadow:0 0 0 4px rgba(59,115,239,.12)
+}
+
+.option{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-top:18px;
+    font-weight:500
+}
+
+.option input{
+    width:18px;
+    height:18px;
+    margin:0;
+    accent-color:#2f6df6
+}
+
+.option a{
+    color:#155ee8;
+    text-decoration-thickness:1px;
+    text-underline-offset:2px
+}
+
+.login-button{
+    width:100%;
+    height:54px;
+    margin-top:26px;
+    border:0;
+    border-radius:12px;
+    background:linear-gradient(90deg,#2f66e8,#2475ff);
+    color:white;
+    font-size:17px;
+    font-weight:750;
+    cursor:pointer;
+    box-shadow:0 10px 24px rgba(37,99,235,.24);
+    transition:.2s ease
+}
+
+.login-button:hover{
+    transform:translateY(-1px);
+    box-shadow:0 13px 28px rgba(37,99,235,.3)
+}
+
+.login-button:active{
+    transform:translateY(0)
+}
+
+.error{
+    display:none;
+    margin-top:14px;
+    padding:11px 13px;
+    border-radius:9px;
+    background:#fff0f0;
+    color:#9b1c1c;
+    font-size:14px
+}
+
+@media(max-width:560px){
+    .card{
+        padding:28px 22px
+    }
+
+    h1{
+        font-size:29px
+    }
+
+    .subtitle{
+        margin-left:0;
+        margin-top:12px
+    }
+}
 </style>
 </head>
+
 <body>
+
 <main class="card">
-  <h1 data-testid="login-title">QA Test Store</h1>
-  <p>Sign in to enter the store.</p>
 
-  <form id="loginForm" method="post" action="/login" data-testid="login-form">
-    <label for="username">Username</label>
-    <input id="username" name="username" autocomplete="username" required data-testid="username-input">
+    <div class="brand">
+        <div class="brand-icon">♙</div>
+        <h1 data-testid="login-title">QA Test Store</h1>
+    </div>
 
-    <label for="password">Password</label>
-    <input id="password" name="password" type="password" autocomplete="current-password" required data-testid="password-input">
+    <p class="subtitle">
+        Sign in to enter the store.
+    </p>
 
-    <label style="display:flex;align-items:center;gap:8px;font-weight:500">
-      <input id="remember" name="remember" type="checkbox" style="width:auto;margin:0" data-testid="remember-checkbox">
-      Remember me
-    </label>
+    <form
+        id="loginForm"
+        method="post"
+        action="/login"
+        data-testid="login-form">
 
-    <label style="display:flex;align-items:center;gap:8px;font-weight:500">
-      <input id="termsCheckbox" name="terms" type="checkbox" required style="width:auto;margin:0" data-testid="terms-checkbox">
-      <span>I accept the <a href="/terms" data-testid="terms-link">Terms & Conditions</a></span>
-    </label>
+        <label for="username">
+            Username
+        </label>
 
-    <button type="submit" data-testid="login-button">Login</button>
-  </form>
+        <div class="input-wrap">
+            <span class="input-icon">♙</span>
 
-  <div id="loginError" class="error" role="alert" data-testid="login-error"></div>
+            <input
+                id="username"
+                name="username"
+                type="text"
+                autocomplete="username"
+                placeholder="Enter your username"
+                required
+                data-testid="username-input">
+        </div>
+
+        <label for="password">
+            Password
+        </label>
+
+        <div class="input-wrap">
+            <span class="input-icon">▣</span>
+
+            <input
+                id="password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                placeholder="Enter your password"
+                required
+                data-testid="password-input">
+        </div>
+
+        <label class="option">
+            <input
+                id="remember"
+                name="remember"
+                type="checkbox"
+                data-testid="remember-checkbox">
+
+            <span>Remember me</span>
+        </label>
+
+        <label class="option">
+            <input
+                id="termsCheckbox"
+                name="terms"
+                type="checkbox"
+                required
+                data-testid="terms-checkbox">
+
+            <span>
+                I accept the
+                <a href="/terms" data-testid="terms-link">
+                    Terms & Conditions
+                </a>
+            </span>
+        </label>
+
+        <button
+            type="submit"
+            class="login-button"
+            data-testid="login-button">
+
+            Login →
+        </button>
+
+    </form>
+
+    <div
+        id="loginError"
+        class="error"
+        role="alert"
+        data-testid="login-error">
+    </div>
 
 </main>
 
 <script>
 document.getElementById("loginForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
+    event.preventDefault();
 
-  const form = event.currentTarget;
-  if (!form.reportValidity()) return;
+    const form = event.currentTarget;
 
-  const formData = new FormData(form);
-
-  const response = await fetch("/login", {
-    method: "POST",
-    body: formData
-  });
-
-  const data = await response.json();
-
-  if (response.ok) {
-    localStorage.setItem("authToken", data.token);
-    localStorage.setItem("username", data.username);
-    localStorage.setItem("role", data.role);
-
-    if (data.role === "admin") {
-      window.location.href = "/store";
-    } else {
-      window.location.href = "/orders";
+    if (!form.reportValidity()) {
+        return;
     }
-  } else {
-    const error = document.getElementById("loginError");
-    error.textContent = data.error || "Login failed";
-    error.style.display = "block";
-  }
+
+    const formData = new FormData(form);
+
+    const response = await fetch("/login", {
+        method: "POST",
+        body: formData
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+        localStorage.setItem("authToken", data.token);
+        localStorage.setItem("username", data.username);
+        localStorage.setItem("role", data.role);
+
+        if (data.role === "admin") {
+            window.location.href = "/store";
+        } else {
+            window.location.href = "/orders";
+        }
+    } else {
+        const error = document.getElementById("loginError");
+        error.textContent = data.error || "Login failed";
+        error.style.display = "block";
+    }
 });
 </script>
+
 </body>
 </html>
 """
