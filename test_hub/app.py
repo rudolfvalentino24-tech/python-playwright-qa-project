@@ -7,8 +7,9 @@ import base64
 import json
 import os
 import re
+import hmac
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 from datetime import datetime, timezone
 
@@ -19,6 +20,11 @@ JIRA_PROJECT_KEY = os.environ.get("JIRA_PROJECT_KEY", "SCRUM").strip().upper()
 JIRA_EMAIL = os.environ.get("JIRA_EMAIL", "").strip()
 JIRA_API_TOKEN = os.environ.get("JIRA_API_TOKEN", "").strip()
 TEST_HUB_BASE_URL = os.environ.get("TEST_HUB_BASE_URL", "http://127.0.0.1:3000").rstrip("/")
+TEST_HUB_API_KEY = os.environ.get("TEST_HUB_API_KEY", "").strip()
+JENKINS_URL = os.environ.get("JENKINS_URL", "http://127.0.0.1:8080").rstrip("/")
+JENKINS_JOB_NAME = os.environ.get("JENKINS_JOB_NAME", "").strip()
+JENKINS_USER = os.environ.get("JENKINS_USER", "").strip()
+JENKINS_API_TOKEN = os.environ.get("JENKINS_API_TOKEN", "").strip()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "test-hub-dev-secret")
@@ -184,6 +190,9 @@ class TestRun(db.Model):
     name = db.Column(db.String(250), nullable=False)
     execution_type = db.Column(db.String(20), nullable=False, default="Manual")
     environment = db.Column(db.String(80), nullable=False, default="")
+    execution_status = db.Column(db.String(20), nullable=False, default="Planned", index=True)
+    jenkins_queue_url = db.Column(db.String(500), nullable=False, default="")
+    runner_message = db.Column(db.Text, nullable=False, default="")
     started_at = db.Column(
         db.DateTime(timezone=True),
         nullable=False,
@@ -455,6 +464,83 @@ def release_report_stats(release):
             key=lambda item: (item.feature_snapshot.lower(), item.case_key_snapshot),
         ),
     }
+
+
+def test_hub_api_authorized():
+    if not TEST_HUB_API_KEY:
+        return False
+    supplied = request.headers.get("Authorization", "")
+    expected = f"Bearer {TEST_HUB_API_KEY}"
+    return hmac.compare_digest(supplied, expected)
+
+
+def trigger_jenkins_test_run(run):
+    """Queue a parameterized Jenkins build for one automated Test Hub run."""
+    if not JENKINS_JOB_NAME:
+        raise RuntimeError("JENKINS_JOB_NAME is not configured.")
+    if not JENKINS_USER or not JENKINS_API_TOKEN:
+        raise RuntimeError("Jenkins credentials are not configured.")
+    if not TEST_HUB_API_KEY:
+        raise RuntimeError("TEST_HUB_API_KEY is not configured.")
+
+    case_ids = [item.case_key_snapshot for item in run.items]
+    if not case_ids:
+        raise RuntimeError("The test run has no planned test cases.")
+
+    auth = base64.b64encode(
+        f"{JENKINS_USER}:{JENKINS_API_TOKEN}".encode("utf-8")
+    ).decode("ascii")
+    headers = {
+        "Authorization": f"Basic {auth}",
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+
+    # Jenkins API tokens normally bypass CSRF crumbs, but use one when available.
+    try:
+        crumb_request = Request(
+            f"{JENKINS_URL}/crumbIssuer/api/json",
+            headers={"Authorization": f"Basic {auth}", "Accept": "application/json"},
+        )
+        with urlopen(crumb_request, timeout=10) as response:
+            crumb_data = json.loads(response.read().decode("utf-8"))
+            crumb_field = crumb_data.get("crumbRequestField")
+            crumb_value = crumb_data.get("crumb")
+            if crumb_field and crumb_value:
+                headers[crumb_field] = crumb_value
+    except (HTTPError, URLError, json.JSONDecodeError):
+        pass
+
+    parameters = urlencode({
+        "TEST_RUN_ID": str(run.id),
+        "TEST_CASE_IDS": ",".join(case_ids),
+        "TEST_HUB_URL": TEST_HUB_BASE_URL,
+    }).encode("utf-8")
+
+    job_url = f"{JENKINS_URL}/job/{quote(JENKINS_JOB_NAME, safe='')}"
+    build_request = Request(
+        f"{job_url}/buildWithParameters",
+        data=parameters,
+        method="POST",
+        headers=headers,
+    )
+
+    try:
+        with urlopen(build_request, timeout=15) as response:
+            return response.headers.get("Location", "")
+    except HTTPError as exc:
+        if exc.code == 401:
+            raise RuntimeError("Jenkins authentication failed.") from exc
+        if exc.code == 403:
+            raise RuntimeError(
+                "Jenkins denied the build request. Check API token, Build permission and CSRF settings."
+            ) from exc
+        if exc.code == 404:
+            raise RuntimeError(
+                "Jenkins job was not found. Check JENKINS_URL and JENKINS_JOB_NAME."
+            ) from exc
+        raise RuntimeError(f"Jenkins returned HTTP {exc.code}.") from exc
+    except URLError as exc:
+        raise RuntimeError("Test Hub could not connect to Jenkins.") from exc
 
 
 def jira_api_request(path, method="GET", body=None):
@@ -1215,7 +1301,7 @@ TEST_RUN_PAGE_HTML = """
 :root{--bg:#eef3fb;--surface:rgba(255,255,255,.95);--text:#111827;--muted:#6b7280;--border:#d7dfec;--accent:#2f66e8;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;color:var(--text);background:radial-gradient(circle at 8% 5%,rgba(98,134,255,.17),transparent 28%),radial-gradient(circle at 94% 16%,rgba(36,117,255,.11),transparent 24%),linear-gradient(180deg,#f8faff,#eef3fb)}
 header{padding:16px 30px;background:rgba(20,42,82,.94);color:#fff}.brand{display:flex;align-items:center;gap:12px}.brand-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#6286ff,#1f63f2)}.brand strong{font-size:20px}.brand span{display:block;font-size:12px;opacity:.7}
-.wrap{max-width:1220px;margin:0 auto;padding:32px 22px 50px}.top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:20px}.top h1{margin:0;font-size:29px;color:#172b4d}.subtitle{margin-top:5px;color:var(--muted)}.actions{display:flex;gap:8px;flex-wrap:wrap}.button{display:inline-block;padding:10px 14px;border-radius:10px;background:#eef2f7;color:#20324f;text-decoration:none;font-weight:750}
+.wrap{max-width:1220px;margin:0 auto;padding:32px 22px 50px}.top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:20px}.top h1{margin:0;font-size:29px;color:#172b4d}.subtitle{margin-top:5px;color:var(--muted)}.actions{display:flex;gap:8px;flex-wrap:wrap}.button,button.primary{display:inline-block;padding:10px 14px;border:0;border-radius:10px;font:inherit;text-decoration:none;font-weight:750;cursor:pointer}.button{background:#eef2f7;color:#20324f}.primary{background:linear-gradient(90deg,#2f66e8,#2475ff);color:#fff;box-shadow:0 8px 18px rgba(37,99,235,.2)}button:disabled{opacity:.55;cursor:not-allowed}
 .stats{display:grid;grid-template-columns:repeat(7,1fr);gap:11px;margin-bottom:20px}.stat{padding:15px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:0 10px 28px rgba(35,61,108,.06)}.stat strong{display:block;font-size:24px;color:#17325d}.stat span{display:block;margin-top:5px;font-size:12px;color:var(--muted);font-weight:650}
 .card{padding:21px;border:1px solid var(--border);border-radius:18px;background:var(--surface);box-shadow:0 16px 42px rgba(35,61,108,.07)}.progress{height:10px;margin:12px 0 20px;border-radius:999px;background:#e7ecf4;overflow:hidden}.progress>div{height:100%;background:linear-gradient(90deg,#2f66e8,#2475ff)}
 .run-row{display:grid;grid-template-columns:100px minmax(260px,1fr) 130px minmax(340px,1.1fr);gap:12px;align-items:center;padding:14px 0;border-top:1px solid #e7ebf2}.run-row:first-of-type{border-top:0}.badge{display:inline-block;width:max-content;padding:5px 8px;border-radius:999px;font-size:12px;font-weight:800}.Passed{background:#dcfce7;color:#166534}.Failed{background:#fee2e2;color:#991b1b}.Blocked{background:#fef3c7;color:#92400e}.Skipped{background:#e5e7eb;color:#4b5563}.NotRun{background:#edf1f7;color:#526174}
@@ -1233,13 +1319,26 @@ header{padding:16px 30px;background:rgba(20,42,82,.94);color:#fff}.brand{display
       <div class="subtitle">
         {{ run.execution_type }}{% if run.environment %} · {{ run.environment }}{% endif %}
         {% if run.release %} · Release {{ run.release.version }}{% endif %}
+        · <strong>{{ run.execution_status }}</strong>
       </div>
     </div>
     <div class="actions">
+      {% if run.execution_type == 'Automated' %}
+        <form method="post" action="{{ url_for('start_automated_test_run', run_id=run.id) }}">
+          <button class="primary" type="submit" {% if run.execution_status in ['Queued', 'Running'] %}disabled{% endif %}>▶ Run with Playwright</button>
+        </form>
+      {% endif %}
       {% if run.release %}<a class="button" href="{{ url_for('release_details', release_id=run.release.id) }}">Release report</a>{% endif %}
       <a class="button" href="{{ url_for('test_runs') }}">All test runs</a>
     </div>
   </div>
+
+  {% if run.runner_message %}
+    <section class="card" style="margin-bottom:18px;padding:14px 18px">
+      <strong>Runner:</strong> {{ run.runner_message }}
+      {% if run.jenkins_queue_url %} · <a href="{{ run.jenkins_queue_url }}" target="_blank" rel="noopener">Open Jenkins queue</a>{% endif %}
+    </section>
+  {% endif %}
 
   <section class="stats">
     <div class="stat"><strong>{{ summary.total }}</strong><span>Tests</span></div>
@@ -1891,6 +1990,35 @@ def create_test_run():
     return redirect(url_for("test_run_details", run_id=run.id))
 
 
+@app.post("/test-runs/<int:run_id>/start")
+def start_automated_test_run(run_id):
+    run = db.session.get(TestRun, run_id)
+    if run is None:
+        return "Test run not found.", 404
+    if run.execution_type != "Automated":
+        return "Only Automated test runs can be started with Playwright.", 400
+    if not run.items:
+        return "This test run has no planned test cases.", 400
+
+    run.runner_message = ""
+    run.jenkins_queue_url = ""
+    run.finished_at = None
+
+    try:
+        queue_url = trigger_jenkins_test_run(run)
+    except RuntimeError as exc:
+        run.execution_status = "Error"
+        run.runner_message = str(exc)
+        db.session.commit()
+        return redirect(url_for("test_run_details", run_id=run.id))
+
+    run.execution_status = "Queued"
+    run.jenkins_queue_url = queue_url or ""
+    run.runner_message = "Jenkins build queued successfully."
+    db.session.commit()
+    return redirect(url_for("test_run_details", run_id=run.id))
+
+
 @app.get("/test-runs/<int:run_id>")
 def test_run_details(run_id):
     run = db.session.get(TestRun, run_id)
@@ -1934,7 +2062,12 @@ def record_test_run_result(run_id, item_id):
     db.session.flush()
 
     summary = test_run_summary(run)
-    run.finished_at = executed_at if summary["not_run"] == 0 else None
+    if summary["not_run"] == 0:
+        run.execution_status = "Completed"
+        run.finished_at = executed_at
+    else:
+        run.execution_status = "Running"
+        run.finished_at = None
     db.session.commit()
     return redirect(url_for("test_run_details", run_id=run.id))
 
@@ -2293,6 +2426,96 @@ def api_jira_stories():
     })
 
 
+@app.post("/api/test-runs/<int:run_id>/results")
+def api_record_test_run_results(run_id):
+    if not test_hub_api_authorized():
+        return jsonify({"error": "Unauthorized."}), 401
+
+    run = db.session.get(TestRun, run_id)
+    if run is None:
+        return jsonify({"error": "Test run not found."}), 404
+
+    payload = request.get_json(silent=True) or {}
+    submitted = payload.get("results")
+    if submitted is None:
+        submitted = [payload]
+    if not isinstance(submitted, list):
+        return jsonify({"error": "results must be a list."}), 400
+
+    recorded = []
+    now = datetime.now(timezone.utc)
+
+    for item_data in submitted:
+        case_key = str(item_data.get("case_key", "")).strip().upper()
+        result_value = str(item_data.get("result", "")).strip()
+        if not case_key or result_value not in RESULT_STATUSES:
+            return jsonify({"error": f"Invalid result payload for {case_key or 'unknown case'}."}), 400
+
+        item = db.session.scalar(
+            db.select(TestRunItem).where(
+                TestRunItem.test_run_id == run.id,
+                TestRunItem.case_key_snapshot == case_key,
+            )
+        )
+        if item is None:
+            return jsonify({"error": f"{case_key} is not part of this test run."}), 400
+
+        duration_ms = item_data.get("duration_ms")
+        if duration_ms is not None:
+            try:
+                duration_ms = max(0, int(duration_ms))
+            except (TypeError, ValueError):
+                duration_ms = None
+
+        result = TestResult(
+            test_run=run,
+            test_case=item.test_case,
+            result=result_value,
+            executed_at=now,
+            duration_ms=duration_ms,
+            notes=str(item_data.get("notes", "") or ""),
+            error_message=str(item_data.get("error_message", "") or ""),
+            case_key_snapshot=item.case_key_snapshot,
+            case_title_snapshot=item.case_title_snapshot,
+            feature_snapshot=item.feature_snapshot,
+        )
+        db.session.add(result)
+        recorded.append(case_key)
+
+    run.execution_status = "Running"
+    run.runner_message = f"Playwright reported {len(recorded)} result(s)."
+    db.session.commit()
+    return jsonify({"recorded": recorded, "summary": {
+        key: value for key, value in test_run_summary(run).items() if key != "rows"
+    }})
+
+
+@app.post("/api/test-runs/<int:run_id>/finish")
+def api_finish_test_run(run_id):
+    if not test_hub_api_authorized():
+        return jsonify({"error": "Unauthorized."}), 401
+
+    run = db.session.get(TestRun, run_id)
+    if run is None:
+        return jsonify({"error": "Test run not found."}), 404
+
+    payload = request.get_json(silent=True) or {}
+    runner_status = str(payload.get("status", "Completed")).strip()
+    if runner_status not in {"Completed", "Error"}:
+        return jsonify({"error": "Invalid runner status."}), 400
+
+    run.execution_status = runner_status
+    run.finished_at = datetime.now(timezone.utc)
+    run.runner_message = str(payload.get("message", "") or "")
+    db.session.commit()
+
+    summary = test_run_summary(run)
+    return jsonify({
+        "status": run.execution_status,
+        "summary": {key: value for key, value in summary.items() if key != "rows"},
+    })
+
+
 @app.get("/api/test-runs")
 def api_test_runs():
     runs = db.session.scalars(
@@ -2310,6 +2533,8 @@ def api_test_runs():
             "release": run.release.version if run.release else None,
             "execution_type": run.execution_type,
             "environment": run.environment,
+            "execution_status": run.execution_status,
+            "jenkins_queue_url": run.jenkins_queue_url,
             "started_at": run.started_at.isoformat() if run.started_at else None,
             "finished_at": run.finished_at.isoformat() if run.finished_at else None,
             "summary": {
@@ -2394,6 +2619,15 @@ def migrate_schema_and_legacy_jira_links():
         run_columns = {column["name"] for column in inspector.get_columns("test_runs")}
         if "release_id" not in run_columns:
             db.session.execute(text("ALTER TABLE test_runs ADD COLUMN release_id INTEGER"))
+            db.session.commit()
+        if "execution_status" not in run_columns:
+            db.session.execute(text("ALTER TABLE test_runs ADD COLUMN execution_status VARCHAR(20) DEFAULT 'Planned' NOT NULL"))
+            db.session.commit()
+        if "jenkins_queue_url" not in run_columns:
+            db.session.execute(text("ALTER TABLE test_runs ADD COLUMN jenkins_queue_url VARCHAR(500) DEFAULT '' NOT NULL"))
+            db.session.commit()
+        if "runner_message" not in run_columns:
+            db.session.execute(text("ALTER TABLE test_runs ADD COLUMN runner_message TEXT DEFAULT '' NOT NULL"))
             db.session.commit()
 
     # Move any legacy single Jira story into the new many-to-many table once.
