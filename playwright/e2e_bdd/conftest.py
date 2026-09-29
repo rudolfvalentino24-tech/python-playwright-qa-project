@@ -1,7 +1,161 @@
+import json
+import os
+from pathlib import Path
+import re
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
 import pytest
 from pytest_bdd import given, when, then
 from pageObjects.login import LoginPage
 from pageObjects.ordersHistory import OrdersHistoryPage
+
+
+FEATURES_DIR = Path(__file__).parent / "features"
+TEST_HUB_CASE_IDS = {
+    value.strip().upper()
+    for value in os.getenv("TEST_CASE_IDS", "").split(",")
+    if value.strip()
+}
+TEST_HUB_RUN_ID = os.getenv("TEST_RUN_ID", "").strip()
+TEST_HUB_URL = os.getenv("TEST_HUB_URL", "").rstrip("/")
+TEST_HUB_API_KEY = os.getenv("TEST_HUB_API_KEY", "").strip()
+
+_case_id_by_nodeid = {}
+
+
+def _normalize_case_token(value):
+    return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+
+
+def _known_bdd_case_ids():
+    ids = set()
+    pattern = re.compile(r"\b[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+\b")
+    for feature_file in FEATURES_DIR.glob("*.feature"):
+        ids.update(pattern.findall(feature_file.read_text(encoding="utf-8")))
+    return sorted(ids, key=lambda value: len(_normalize_case_token(value)), reverse=True)
+
+
+KNOWN_BDD_CASE_IDS = _known_bdd_case_ids()
+
+
+def _case_id_for_item(item):
+    normalized_nodeid = _normalize_case_token(item.nodeid)
+    for case_id in KNOWN_BDD_CASE_IDS:
+        if _normalize_case_token(case_id) in normalized_nodeid:
+            return case_id
+    return None
+
+
+def _hub_post(path, payload):
+    if not TEST_HUB_RUN_ID:
+        return
+
+    request_data = Request(
+        f"{TEST_HUB_URL}{path}",
+        data=json.dumps(payload).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {TEST_HUB_API_KEY}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urlopen(request_data, timeout=15):
+            pass
+    except (HTTPError, URLError) as exc:
+        print(f"[Test Hub] Failed to report to {path}: {exc}")
+
+
+def pytest_configure(config):
+    if TEST_HUB_RUN_ID and (not TEST_HUB_URL or not TEST_HUB_API_KEY):
+        raise pytest.UsageError(
+            "TEST_RUN_ID requires TEST_HUB_URL and TEST_HUB_API_KEY."
+        )
+
+
+def pytest_collection_modifyitems(config, items):
+    if not TEST_HUB_CASE_IDS:
+        return
+
+    selected = []
+    deselected = []
+    found = set()
+
+    for item in items:
+        case_id = _case_id_for_item(item)
+        if case_id in TEST_HUB_CASE_IDS:
+            selected.append(item)
+            found.add(case_id)
+            _case_id_by_nodeid[item.nodeid] = case_id
+        else:
+            deselected.append(item)
+
+    missing = TEST_HUB_CASE_IDS - found
+    if missing:
+        raise pytest.UsageError(
+            "Test Hub case IDs were not found in pytest collection: "
+            + ", ".join(sorted(missing))
+        )
+
+    config.hook.pytest_deselected(items=deselected)
+    items[:] = selected
+
+
+def _report_result(report, result):
+    case_id = _case_id_by_nodeid.get(report.nodeid)
+    if not case_id or not TEST_HUB_RUN_ID:
+        return
+
+    error_message = ""
+    if result == "Failed":
+        error_message = getattr(report, "longreprtext", "") or ""
+
+    _hub_post(
+        f"/api/test-runs/{TEST_HUB_RUN_ID}/results",
+        {
+            "case_key": case_id,
+            "result": result,
+            "duration_ms": round(report.duration * 1000),
+            "error_message": error_message[-12000:],
+        },
+    )
+
+
+def pytest_runtest_logreport(report):
+    if report.when == "setup":
+        if report.failed:
+            _report_result(report, "Failed")
+        elif report.skipped:
+            _report_result(report, "Skipped")
+        return
+
+    if report.when == "call":
+        if report.passed:
+            _report_result(report, "Passed")
+        elif report.failed:
+            _report_result(report, "Failed")
+        elif report.skipped:
+            _report_result(report, "Skipped")
+        return
+
+    if report.when == "teardown" and report.failed:
+        _report_result(report, "Failed")
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if not TEST_HUB_RUN_ID or not TEST_HUB_URL or not TEST_HUB_API_KEY:
+        return
+
+    runner_status = "Completed" if exitstatus in (0, 1) else "Error"
+    _hub_post(
+        f"/api/test-runs/{TEST_HUB_RUN_ID}/finish",
+        {
+            "status": runner_status,
+            "message": f"pytest finished with exit code {exitstatus}.",
+        },
+    )
 
 @pytest.fixture
 def shared_data(browserInstance, api_clients):
