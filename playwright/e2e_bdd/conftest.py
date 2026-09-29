@@ -86,7 +86,7 @@ def _scenario_case_id(request, scenario):
                     return case_id
 
     name = getattr(scenario, "name", "") or ""
-    match = re.match(r"^([A-Z0-9]+(?:-[A-Z0-9]+)+)\\b", name.strip().upper())
+    match = re.match(r"^([A-Z0-9]+(?:-[A-Z0-9]+)+)\b", name.strip().upper())
     return match.group(1) if match else None
 
 
