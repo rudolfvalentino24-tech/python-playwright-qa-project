@@ -606,9 +606,7 @@ textarea{min-height:100px;resize:vertical}.actions{display:flex;gap:10px;margin-
       <div class="field"><label>Expected result</label><textarea name="expected_result" required>{{ case.expected_result }}</textarea></div>
       <div class="actions">
         <button class="primary" type="submit">Save changes</button>
-        {% for jira_key in case.jira_keys %}
-          <a class="cancel" href="{{ url_for('jira_story_cases', jira_key=jira_key) }}">{{ jira_key }} view</a>
-        {% endfor %}
+        <div id="jiraViewButtons" class="actions" style="margin-top:0"></div>
         <a class="cancel" href="{{ url_for('index') }}">Cancel</a>
       </div>
     </form>
@@ -632,6 +630,17 @@ function toggleEditJiraStory(key){
   selected.has(key)?selected.delete(key):selected.add(key);
   document.getElementById('editJiraKeys').value=[...selected].join(', ');
   renderEditJiraStories();
+  renderJiraViewButtons();
+}
+
+function renderJiraViewButtons(){
+  const container=document.getElementById('jiraViewButtons');
+  if(!container) return;
+
+  const keys=[...editSelectedJiraKeys()];
+  container.innerHTML=keys.map(key=>
+    '<a class="cancel" href="/jira/'+encodeURIComponent(key)+'">'+escapeEditHtml(key)+' view</a>'
+  ).join('');
 }
 
 function renderEditJiraStories(){
@@ -673,7 +682,15 @@ async function loadEditJiraStories(){
   }
 }
 
-document.addEventListener('DOMContentLoaded',loadEditJiraStories);
+document.addEventListener('DOMContentLoaded',()=>{
+  loadEditJiraStories();
+  renderJiraViewButtons();
+
+  document.getElementById('editJiraKeys').addEventListener('input',()=>{
+    renderEditJiraStories();
+    renderJiraViewButtons();
+  });
+});
 </script>
 </body>
 </html>
