@@ -20,6 +20,8 @@ TEST_HUB_CASE_IDS = {
 TEST_HUB_RUN_ID = os.getenv("TEST_RUN_ID", "").strip()
 TEST_HUB_URL = os.getenv("TEST_HUB_URL", "").rstrip("/")
 TEST_HUB_API_KEY = os.getenv("TEST_HUB_API_KEY", "").strip()
+JENKINS_BUILD_NUMBER = os.getenv("BUILD_NUMBER", "").strip()
+JENKINS_BUILD_URL = os.getenv("BUILD_URL", "").strip()
 
 _case_id_by_nodeid = {}
 
@@ -160,6 +162,8 @@ def pytest_sessionfinish(session, exitstatus):
         {
             "status": runner_status,
             "message": message,
+            "build_number": JENKINS_BUILD_NUMBER,
+            "build_url": JENKINS_BUILD_URL,
         },
     )
 
