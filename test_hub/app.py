@@ -478,9 +478,9 @@ button:hover,.button-link:hover{transform:translateY(-1px)}
     <div class="card">
       <h2>Test cases by feature</h2>
       <div class="toolbar">
-        <input id="search" placeholder="Search feature, ID, title or Jira key…" oninput="filterCases()">
-        <select id="typeFilter" onchange="filterCases()"><option value="">All types</option><option>Manual</option><option>Automated</option></select>
-        <select id="statusFilter" onchange="filterCases()"><option value="">All statuses</option><option>Draft</option><option>Ready</option><option>Passed</option><option>Failed</option><option>Blocked</option></select>
+        <input id="search" placeholder="Search feature, ID, title or Jira key…">
+        <select id="typeFilter"><option value="">All types</option><option>Manual</option><option>Automated</option></select>
+        <select id="statusFilter"><option value="">All statuses</option><option>Draft</option><option>Ready</option><option>Passed</option><option>Failed</option><option>Blocked</option></select>
       </div>
 
       <div id="caseList">
@@ -533,6 +533,7 @@ button:hover,.button-link:hover{transform:translateY(-1px)}
         <div class="empty">No test cases yet. Create the first one on the right.</div>
       {% endfor %}
       </div>
+      <div id="noSearchResults" class="empty" style="display:none">No matching test cases.</div>
     </div>
 
     <aside class="card">
@@ -599,19 +600,38 @@ function filterCases(){
   const q=document.getElementById('search').value.trim().toLowerCase();
   const type=document.getElementById('typeFilter').value;
   const status=document.getElementById('statusFilter').value;
+  let totalVisible=0;
 
   document.querySelectorAll('.feature-group').forEach(group=>{
-    let visible=0;
-    group.querySelectorAll('.case').forEach(el=>{
-      const okText=!q || el.dataset.search.includes(q);
-      const okType=!type || el.dataset.type===type;
-      const okStatus=!status || el.dataset.status===status;
-      const show=okText&&okType&&okStatus;
-      el.style.display=show?'block':'none';
-      if(show) visible++;
+    const feature=(group.dataset.feature || '').toLowerCase();
+    let groupVisible=0;
+
+    group.querySelectorAll('.case').forEach(testCase=>{
+      const searchableText=(feature+' '+testCase.textContent).toLowerCase();
+      const matchesText=!q || searchableText.includes(q);
+      const matchesType=!type || testCase.dataset.type===type;
+      const matchesStatus=!status || testCase.dataset.status===status;
+      const show=matchesText && matchesType && matchesStatus;
+
+      testCase.style.display=show?'block':'none';
+      if(show){
+        groupVisible++;
+        totalVisible++;
+      }
     });
-    group.style.display=visible?'block':'none';
+
+    group.style.display=groupVisible?'block':'none';
+
+    const count=group.querySelector('.feature-count');
+    if(count && (q || type || status)){
+      count.textContent=groupVisible+' test case'+(groupVisible===1?'':'s');
+    } else if(count){
+      const originalCount=group.querySelectorAll('.case').length;
+      count.textContent=originalCount+' test case'+(originalCount===1?'':'s');
+    }
   });
+
+  document.getElementById('noSearchResults').style.display=totalVisible?'none':'block';
 }
 
 function escapeHtml(value){
@@ -732,7 +752,12 @@ async function loadJiraStories(prefix){
   }
 }
 
-document.addEventListener('DOMContentLoaded',()=>loadJiraStories('create'));
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('search').addEventListener('input',filterCases);
+  document.getElementById('typeFilter').addEventListener('change',filterCases);
+  document.getElementById('statusFilter').addEventListener('change',filterCases);
+  loadJiraStories('create');
+});
 </script>
 </body>
 </html>
