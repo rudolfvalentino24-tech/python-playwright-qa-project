@@ -25,11 +25,24 @@ services:
     name: python-playwright-test-hub
     runtime: python
     plan: free
+    region: frankfurt
     rootDir: test_hub
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    healthCheckPath: /health
     envVars:
       - key: SECRET_KEY
         generateValue: true
       - key: JIRA_BASE_URL
         value: https://qa-test-store.atlassian.net/browse
+      - key: DATABASE_URL
+        fromDatabase:
+          name: python-playwright-test-hub-db
+          property: connectionString
+
+databases:
+  - name: python-playwright-test-hub-db
+    plan: free
+    region: frankfurt
+    databaseName: test_hub
+    user: test_hub
