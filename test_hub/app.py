@@ -197,12 +197,46 @@ class TestRun(db.Model):
     )
 
     release = db.relationship("Release", back_populates="runs")
+    items = db.relationship(
+        "TestRunItem",
+        back_populates="test_run",
+        cascade="all, delete-orphan",
+        order_by="TestRunItem.position",
+    )
     results = db.relationship(
         "TestResult",
         back_populates="test_run",
         cascade="all, delete-orphan",
         order_by="TestResult.executed_at",
     )
+
+
+class TestRunItem(db.Model):
+    __tablename__ = "test_run_items"
+    __table_args__ = (
+        UniqueConstraint("test_run_id", "case_key_snapshot", name="uq_test_run_case_key"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    test_run_id = db.Column(
+        db.Integer,
+        db.ForeignKey("test_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    test_case_id = db.Column(
+        db.Integer,
+        db.ForeignKey("test_cases.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    position = db.Column(db.Integer, nullable=False)
+    case_key_snapshot = db.Column(db.String(64), nullable=False)
+    case_title_snapshot = db.Column(db.String(250), nullable=False)
+    feature_snapshot = db.Column(db.String(120), nullable=False)
+
+    test_run = db.relationship("TestRun", back_populates="items")
+    test_case = db.relationship("TestCase")
 
 
 class TestResult(db.Model):
@@ -314,6 +348,47 @@ def test_case_execution_stats(case):
         "blocked": counts["Blocked"],
         "skipped": counts["Skipped"],
         "pass_rate": pass_rate,
+    }
+
+
+def test_run_latest_results(run):
+    """Return the latest execution result for each planned test in a run."""
+    latest = {}
+    for result in run.results:
+        latest[result.case_key_snapshot] = result
+    return latest
+
+
+def test_run_summary(run):
+    latest = test_run_latest_results(run)
+    counts = {status: 0 for status in RESULT_STATUSES}
+    rows = []
+
+    for item in run.items:
+        result = latest.get(item.case_key_snapshot)
+        status = result.result if result else "Not Run"
+        if result:
+            counts[result.result] += 1
+        rows.append({"item": item, "result": result, "status": status})
+
+    total = len(run.items)
+    executed = sum(counts.values())
+    not_run = max(total - executed, 0)
+    progress = round((executed / total) * 100, 1) if total else 0
+    decided = counts["Passed"] + counts["Failed"]
+    pass_rate = round((counts["Passed"] / decided) * 100, 1) if decided else 0
+
+    return {
+        "total": total,
+        "executed": executed,
+        "not_run": not_run,
+        "passed": counts["Passed"],
+        "failed": counts["Failed"],
+        "blocked": counts["Blocked"],
+        "skipped": counts["Skipped"],
+        "progress": progress,
+        "pass_rate": pass_rate,
+        "rows": rows,
     }
 
 
@@ -644,7 +719,7 @@ button:hover,.button-link:hover{transform:translateY(-1px)}
 <body>
 <header>
   <div class="brand"><div class="brand-icon">🧪</div><div><h1>Test Hub</h1><span>QA test case management</span></div></div>
-  <div class="header-note"><a href="{{ url_for('releases') }}" style="color:#fff;text-decoration:none;font-weight:750">Releases</a> · Grouped by feature · linked to Jira stories</div>
+  <div class="header-note"><a href="{{ url_for('test_runs') }}" style="color:#fff;text-decoration:none;font-weight:750">Test Runs</a> · <a href="{{ url_for('releases') }}" style="color:#fff;text-decoration:none;font-weight:750">Releases</a> · Grouped by feature</div>
 </header>
 <main>
   {% if sync_warning %}
@@ -1022,6 +1097,196 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 """
 
 
+TEST_RUNS_PAGE_HTML = """
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test Runs - Test Hub</title>
+<style>
+:root{--bg:#eef3fb;--surface:rgba(255,255,255,.95);--text:#111827;--muted:#6b7280;--border:#d7dfec;--accent:#2f66e8;--accent2:#2475ff;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;color:var(--text);background:radial-gradient(circle at 8% 5%,rgba(98,134,255,.17),transparent 28%),radial-gradient(circle at 94% 16%,rgba(36,117,255,.11),transparent 24%),linear-gradient(180deg,#f8faff,#eef3fb)}
+header{padding:16px 30px;background:rgba(20,42,82,.94);color:#fff;box-shadow:0 10px 30px rgba(24,47,90,.14)}.brand{display:flex;align-items:center;gap:12px}.brand-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#6286ff,#1f63f2);box-shadow:0 8px 22px rgba(37,99,235,.3)}.brand strong{font-size:20px}.brand span{display:block;font-size:12px;opacity:.7}
+.wrap{max-width:1260px;margin:0 auto;padding:32px 22px 50px}.top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:20px}.top h1{margin:0;font-size:30px;color:#172b4d}.subtitle{margin-top:5px;color:var(--muted)}.actions{display:flex;gap:8px;flex-wrap:wrap}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}.card{padding:21px;border:1px solid var(--border);border-radius:18px;background:var(--surface);box-shadow:0 16px 42px rgba(35,61,108,.07)}.card h2{margin:0 0 14px;font-size:19px;color:#172b4d}
+.button,button{display:inline-block;border:0;border-radius:10px;padding:10px 14px;text-decoration:none;font:inherit;font-weight:750;cursor:pointer}.button{background:#eef2f7;color:#20324f}.primary{background:linear-gradient(90deg,#2f66e8,#2475ff);color:#fff;box-shadow:0 8px 18px rgba(37,99,235,.2)}
+.run{padding:15px 0;border-top:1px solid #e7ebf2}.run:first-of-type{border-top:0}.run-head{display:flex;justify-content:space-between;gap:12px}.run-title{color:#172b4d;text-decoration:none;font-weight:850}.run-title:hover{color:#2468e5}.muted{color:var(--muted);font-size:12px;margin-top:4px}.summary{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}.pill{padding:4px 8px;border-radius:999px;background:#eef2f7;color:#526174;font-size:12px;font-weight:700}.pass{background:#dcfce7;color:#166534}.fail{background:#fee2e2;color:#991b1b}
+label{display:block;margin:13px 0 6px;font-size:12px;font-weight:800;color:#41526c}input,select{width:100%;height:45px;padding:0 12px;border:1px solid #ccd5e4;border-radius:11px;background:#fff;color:var(--text);font:inherit;outline:none}input:focus,select:focus{border-color:#3b73ef;box-shadow:0 0 0 4px rgba(59,115,239,.12)}
+.case-tools{display:flex;gap:8px;margin:10px 0}.case-tools input{flex:1}.case-list{max-height:430px;overflow:auto;border:1px solid var(--border);border-radius:12px;background:#fff}.case-option{display:flex;gap:10px;align-items:flex-start;padding:11px 12px;border-top:1px solid #edf0f5}.case-option:first-child{border-top:0}.case-option input{width:17px;height:17px;margin:2px 0 0}.case-option strong{display:block;font-size:13px;color:#243854}.case-option span{font-size:12px;color:var(--muted)}.empty{padding:28px;text-align:center;color:var(--muted)}
+@media(max-width:850px){header{padding:13px 16px}.wrap{padding:22px 14px}.grid{grid-template-columns:1fr}.top{flex-direction:column}}
+</style>
+</head>
+<body>
+<header><div class="brand"><div class="brand-icon">🧪</div><div><strong>Test Hub</strong><span>QA test case management</span></div></div></header>
+<main class="wrap">
+  <div class="top">
+    <div><h1>Test Runs</h1><div class="subtitle">Plan and execute manual or automated QA runs.</div></div>
+    <div class="actions"><a class="button" href="{{ url_for('releases') }}">Releases</a><a class="button" href="{{ url_for('index') }}">Test cases</a></div>
+  </div>
+
+  <section class="grid">
+    <div class="card">
+      <h2>Run history</h2>
+      {% for row in run_rows %}
+        <div class="run">
+          <div class="run-head">
+            <div>
+              <a class="run-title" href="{{ url_for('test_run_details', run_id=row.run.id) }}">{{ row.run.name }}</a>
+              <div class="muted">
+                {{ row.run.execution_type }}{% if row.run.environment %} · {{ row.run.environment }}{% endif %}
+                {% if row.run.release %} · Release {{ row.run.release.version }}{% endif %}
+              </div>
+            </div>
+            <strong>{{ row.summary.progress }}%</strong>
+          </div>
+          <div class="summary">
+            <span class="pill">{{ row.summary.executed }}/{{ row.summary.total }} executed</span>
+            <span class="pill pass">{{ row.summary.passed }} passed</span>
+            <span class="pill fail">{{ row.summary.failed }} failed</span>
+            <span class="pill">{{ row.summary.not_run }} not run</span>
+          </div>
+        </div>
+      {% else %}<div class="empty">No structured test runs yet.</div>{% endfor %}
+    </div>
+
+    <aside class="card">
+      <h2>Create test run</h2>
+      <form method="post" action="{{ url_for('create_test_run') }}">
+        <label>Name</label>
+        <input name="name" required placeholder="Release 1.0.0 - Regression">
+        <label>Release</label>
+        <select name="release_id">
+          <option value="">No release</option>
+          {% for release in releases %}
+            <option value="{{ release.id }}" {% if selected_release_id == release.id %}selected{% endif %}>{{ release.version }}{% if release.environment %} · {{ release.environment }}{% endif %}</option>
+          {% endfor %}
+        </select>
+        <label>Environment</label>
+        <input name="environment" placeholder="Staging">
+        <label>Execution type</label>
+        <select name="execution_type"><option>Manual</option><option>Automated</option></select>
+        <label>Test cases</label>
+        <div class="case-tools">
+          <input id="runCaseSearch" type="search" placeholder="Search ID, title or feature...">
+          <button class="button" type="button" onclick="setVisibleCases(true)">Select visible</button>
+          <button class="button" type="button" onclick="setVisibleCases(false)">Clear visible</button>
+        </div>
+        <div id="runCaseList" class="case-list">
+          {% for case in cases %}
+            <label class="case-option" data-search="{{ (case.case_key ~ ' ' ~ case.title ~ ' ' ~ case.feature_name)|lower }}">
+              <input type="checkbox" name="case_ids" value="{{ case.id }}">
+              <span><strong>{{ case.case_key }} — {{ case.title }}</strong>{{ case.feature_name }} · {{ case.type }}</span>
+            </label>
+          {% else %}<div class="empty">Create test cases first.</div>{% endfor %}
+        </div>
+        <button class="primary" style="margin-top:14px" type="submit">Create test run</button>
+      </form>
+    </aside>
+  </section>
+</main>
+<script>
+const runCaseSearch=document.getElementById('runCaseSearch');
+runCaseSearch.addEventListener('input',()=>{
+  const query=runCaseSearch.value.trim().toLowerCase();
+  document.querySelectorAll('.case-option').forEach(item=>{
+    item.style.display=!query || item.dataset.search.includes(query)?'flex':'none';
+  });
+});
+function setVisibleCases(checked){
+  document.querySelectorAll('.case-option').forEach(item=>{
+    if(item.style.display!=='none') item.querySelector('input[type="checkbox"]').checked=checked;
+  });
+}
+</script>
+</body>
+</html>
+"""
+
+
+TEST_RUN_PAGE_HTML = """
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ run.name }} - Test Hub</title>
+<style>
+:root{--bg:#eef3fb;--surface:rgba(255,255,255,.95);--text:#111827;--muted:#6b7280;--border:#d7dfec;--accent:#2f66e8;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;color:var(--text);background:radial-gradient(circle at 8% 5%,rgba(98,134,255,.17),transparent 28%),radial-gradient(circle at 94% 16%,rgba(36,117,255,.11),transparent 24%),linear-gradient(180deg,#f8faff,#eef3fb)}
+header{padding:16px 30px;background:rgba(20,42,82,.94);color:#fff}.brand{display:flex;align-items:center;gap:12px}.brand-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#6286ff,#1f63f2)}.brand strong{font-size:20px}.brand span{display:block;font-size:12px;opacity:.7}
+.wrap{max-width:1220px;margin:0 auto;padding:32px 22px 50px}.top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:20px}.top h1{margin:0;font-size:29px;color:#172b4d}.subtitle{margin-top:5px;color:var(--muted)}.actions{display:flex;gap:8px;flex-wrap:wrap}.button{display:inline-block;padding:10px 14px;border-radius:10px;background:#eef2f7;color:#20324f;text-decoration:none;font-weight:750}
+.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:11px;margin-bottom:20px}.stat{padding:15px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:0 10px 28px rgba(35,61,108,.06)}.stat strong{display:block;font-size:24px;color:#17325d}.stat span{display:block;margin-top:5px;font-size:12px;color:var(--muted);font-weight:650}
+.card{padding:21px;border:1px solid var(--border);border-radius:18px;background:var(--surface);box-shadow:0 16px 42px rgba(35,61,108,.07)}.progress{height:10px;margin:12px 0 20px;border-radius:999px;background:#e7ecf4;overflow:hidden}.progress>div{height:100%;background:linear-gradient(90deg,#2f66e8,#2475ff)}
+.run-row{display:grid;grid-template-columns:100px minmax(260px,1fr) 130px minmax(340px,1.1fr);gap:12px;align-items:center;padding:14px 0;border-top:1px solid #e7ebf2}.run-row:first-of-type{border-top:0}.badge{display:inline-block;width:max-content;padding:5px 8px;border-radius:999px;font-size:12px;font-weight:800}.Passed{background:#dcfce7;color:#166534}.Failed{background:#fee2e2;color:#991b1b}.Blocked{background:#fef3c7;color:#92400e}.Skipped{background:#e5e7eb;color:#4b5563}.NotRun{background:#edf1f7;color:#526174}
+.case-link{color:#243854;text-decoration:none;font-weight:850}.case-link:hover{color:#2468e5}.muted{margin-top:4px;color:var(--muted);font-size:12px}.result-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.result-form input{flex:1;min-width:120px;height:37px;padding:0 9px;border:1px solid #ccd5e4;border-radius:9px;font:inherit}.result-form button{border:0;border-radius:8px;padding:8px 9px;font:inherit;font-size:12px;font-weight:800;cursor:pointer}.pass{background:#dcfce7;color:#166534}.fail{background:#fee2e2;color:#991b1b}.block{background:#fef3c7;color:#92400e}.skip{background:#e5e7eb;color:#4b5563}
+@media(max-width:950px){.stats{grid-template-columns:repeat(3,1fr)}.run-row{grid-template-columns:90px 1fr}.result-form{grid-column:1/-1}.run-row>.muted{grid-column:2}}
+@media(max-width:560px){header{padding:13px 16px}.wrap{padding:22px 14px}.top{flex-direction:column}.stats{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<header><div class="brand"><div class="brand-icon">🧪</div><div><strong>Test Hub</strong><span>QA test case management</span></div></div></header>
+<main class="wrap">
+  <div class="top">
+    <div>
+      <h1>{{ run.name }}</h1>
+      <div class="subtitle">
+        {{ run.execution_type }}{% if run.environment %} · {{ run.environment }}{% endif %}
+        {% if run.release %} · Release {{ run.release.version }}{% endif %}
+      </div>
+    </div>
+    <div class="actions">
+      {% if run.release %}<a class="button" href="{{ url_for('release_details', release_id=run.release.id) }}">Release report</a>{% endif %}
+      <a class="button" href="{{ url_for('test_runs') }}">All test runs</a>
+    </div>
+  </div>
+
+  <section class="stats">
+    <div class="stat"><strong>{{ summary.total }}</strong><span>Tests</span></div>
+    <div class="stat"><strong>{{ summary.executed }}</strong><span>Executed</span></div>
+    <div class="stat"><strong>{{ summary.passed }}</strong><span>Passed</span></div>
+    <div class="stat"><strong>{{ summary.failed }}</strong><span>Failed</span></div>
+    <div class="stat"><strong>{{ summary.blocked }}</strong><span>Blocked</span></div>
+    <div class="stat"><strong>{{ summary.not_run }}</strong><span>Not Run</span></div>
+  </section>
+
+  <section class="card">
+    <strong>Progress: {{ summary.executed }} / {{ summary.total }} ({{ summary.progress }}%)</strong>
+    <div class="progress"><div style="width:{{ summary.progress }}%"></div></div>
+
+    {% for row in summary.rows %}
+      <div class="run-row">
+        <span class="badge {% if row.status == 'Not Run' %}NotRun{% else %}{{ row.status }}{% endif %}">{{ row.status }}</span>
+        <div>
+          {% if row.item.test_case %}
+            <a class="case-link" href="{{ url_for('test_case_details', case_key=row.item.test_case.case_key) }}">{{ row.item.case_key_snapshot }} — {{ row.item.case_title_snapshot }}</a>
+          {% else %}
+            <strong>{{ row.item.case_key_snapshot }} — {{ row.item.case_title_snapshot }}</strong>
+          {% endif %}
+          <div class="muted">{{ row.item.feature_snapshot }}</div>
+          {% if row.result and row.result.notes %}<div class="muted">{{ row.result.notes }}</div>{% endif %}
+        </div>
+        <div class="muted">
+          {% if row.result %}{{ row.result.executed_at.strftime('%d %b %H:%M') }}{% else %}Waiting{% endif %}
+        </div>
+        <form class="result-form" method="post" action="{{ url_for('record_test_run_result', run_id=run.id, item_id=row.item.id) }}">
+          <input name="notes" placeholder="Optional notes">
+          <button class="pass" name="result" value="Passed">Pass</button>
+          <button class="fail" name="result" value="Failed">Fail</button>
+          <button class="block" name="result" value="Blocked">Block</button>
+          <button class="skip" name="result" value="Skipped">Skip</button>
+        </form>
+      </div>
+    {% else %}
+      <div class="muted">This run has no planned test cases.</div>
+    {% endfor %}
+  </section>
+</main>
+</body>
+</html>
+"""
+
+
 RELEASES_PAGE_HTML = """
 <!doctype html>
 <html lang="en">
@@ -1047,7 +1312,7 @@ label{display:block;margin:13px 0 6px;font-size:12px;font-weight:800;color:#4152
 <main class="wrap">
   <div class="top">
     <div><h1>Releases</h1><div class="subtitle">Stored QA results and release reports.</div></div>
-    <a class="button" href="{{ url_for('index') }}">All test cases</a>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="button" href="{{ url_for('test_runs') }}">Test Runs</a><a class="button" href="{{ url_for('index') }}">All test cases</a></div>
   </div>
 
   <section class="grid">
@@ -1127,7 +1392,7 @@ header{padding:16px 30px;background:rgba(20,42,82,.94);color:#fff;box-shadow:0 1
       <h1>Release {{ release.version }}</h1>
       <div class="subtitle">Stored QA release report</div>
     </div>
-    <div class="actions"><a class="button" href="{{ url_for('releases') }}">All releases</a><a class="button" href="{{ url_for('index') }}">Test cases</a></div>
+    <div class="actions"><a class="button" href="{{ url_for('test_runs', release_id=release.id) }}">Create test run</a><a class="button" href="{{ url_for('releases') }}">All releases</a><a class="button" href="{{ url_for('index') }}">Test cases</a></div>
   </div>
 
   <section class="stats">
@@ -1160,6 +1425,25 @@ header{padding:16px 30px;background:rgba(20,42,82,.94);color:#fff;box-shadow:0 1
         <span>{{ feature.pass_rate }}%</span>
       </div>
     {% else %}<div class="empty">No release results recorded yet.</div>{% endfor %}
+  </section>
+
+  <section class="card">
+    <h2>Test runs</h2>
+    {% for run in release.runs %}
+      {% set run_stats = run_summaries.get(run.id) %}
+      <div class="result-row">
+        <span class="badge {% if run_stats.failed %}Failed{% elif run_stats.not_run %}Blocked{% else %}Passed{% endif %}">
+          {{ run_stats.progress }}%
+        </span>
+        <div>
+          <a class="case-link" href="{{ url_for('test_run_details', run_id=run.id) }}">{{ run.name }}</a>
+          <div class="muted">{{ run.execution_type }}{% if run.environment %} · {{ run.environment }}{% endif %}</div>
+        </div>
+        <div class="muted">{{ run_stats.executed }}/{{ run_stats.total }} executed</div>
+      </div>
+    {% else %}
+      <div class="empty">No structured test runs for this release yet.</div>
+    {% endfor %}
   </section>
 
   <section class="card">
@@ -1215,6 +1499,7 @@ label{display:block;margin:13px 0 6px;font-size:12px;font-weight:800;color:#4152
     <div><h1>{{ case.case_key }} — {{ case.title }}</h1><div class="subtitle">{{ case.feature_name }} · execution history</div></div>
     <div class="actions">
       <a class="button" href="{{ url_for('index') }}">All test cases</a>
+      <a class="button" href="{{ url_for('test_runs') }}">Test Runs</a>
       <a class="button" href="{{ url_for('releases') }}">Releases</a>
       <a class="button" href="{{ url_for('edit_case', case_key=case.case_key) }}">Edit test case</a>
     </div>
@@ -1517,6 +1802,143 @@ def index():
     )
 
 
+@app.get("/test-runs")
+def test_runs():
+    all_runs = db.session.scalars(
+        db.select(TestRun)
+        .where(db.select(db.func.count(TestRunItem.id)).where(TestRunItem.test_run_id == TestRun.id).scalar_subquery() > 0)
+        .order_by(TestRun.created_at.desc(), TestRun.id.desc())
+    ).all()
+    all_releases = db.session.scalars(
+        db.select(Release).order_by(Release.release_date.desc(), Release.id.desc())
+    ).all()
+    cases = db.session.scalars(
+        db.select(TestCase).order_by(TestCase.feature, TestCase.case_key)
+    ).all()
+
+    selected_release_id = None
+    raw_release_id = request.args.get("release_id", "").strip()
+    if raw_release_id.isdigit():
+        selected_release_id = int(raw_release_id)
+
+    return render_template_string(
+        TEST_RUNS_PAGE_HTML,
+        run_rows=[{"run": run, "summary": test_run_summary(run)} for run in all_runs],
+        releases=all_releases,
+        cases=cases,
+        selected_release_id=selected_release_id,
+    )
+
+
+@app.post("/test-runs")
+def create_test_run():
+    name = request.form.get("name", "").strip()
+    release_id_value = request.form.get("release_id", "").strip()
+    environment = request.form.get("environment", "").strip()
+    execution_type = request.form.get("execution_type", "Manual").strip()
+    case_id_values = request.form.getlist("case_ids")
+
+    if not name:
+        return "Test run name is required.", 400
+    if execution_type not in TYPES:
+        return "Invalid execution type.", 400
+    if not case_id_values:
+        return "Select at least one test case.", 400
+
+    release = None
+    if release_id_value:
+        try:
+            release = db.session.get(Release, int(release_id_value))
+        except ValueError:
+            return "Invalid release.", 400
+        if release is None:
+            return "Release not found.", 404
+
+    case_ids = []
+    for raw_id in case_id_values:
+        try:
+            case_ids.append(int(raw_id))
+        except ValueError:
+            return "Invalid test case selection.", 400
+
+    cases = db.session.scalars(
+        db.select(TestCase)
+        .where(TestCase.id.in_(case_ids))
+        .order_by(TestCase.feature, TestCase.case_key)
+    ).all()
+    if len(cases) != len(set(case_ids)):
+        return "One or more selected test cases no longer exist.", 400
+
+    run = TestRun(
+        release=release,
+        name=name,
+        execution_type=execution_type,
+        environment=environment or (release.environment if release else ""),
+        started_at=datetime.now(timezone.utc),
+    )
+    run.items = [
+        TestRunItem(
+            test_case=case,
+            position=index,
+            case_key_snapshot=case.case_key,
+            case_title_snapshot=case.title,
+            feature_snapshot=case.feature_name,
+        )
+        for index, case in enumerate(cases, start=1)
+    ]
+    db.session.add(run)
+    db.session.commit()
+    return redirect(url_for("test_run_details", run_id=run.id))
+
+
+@app.get("/test-runs/<int:run_id>")
+def test_run_details(run_id):
+    run = db.session.get(TestRun, run_id)
+    if run is None:
+        return "Test run not found.", 404
+
+    return render_template_string(
+        TEST_RUN_PAGE_HTML,
+        run=run,
+        summary=test_run_summary(run),
+    )
+
+
+@app.post("/test-runs/<int:run_id>/items/<int:item_id>/results")
+def record_test_run_result(run_id, item_id):
+    run = db.session.get(TestRun, run_id)
+    if run is None:
+        return "Test run not found.", 404
+
+    item = db.session.get(TestRunItem, item_id)
+    if item is None or item.test_run_id != run.id:
+        return "Test run item not found.", 404
+
+    result_value = request.form.get("result", "").strip()
+    notes = request.form.get("notes", "").strip()
+    if result_value not in RESULT_STATUSES:
+        return "Invalid execution result.", 400
+
+    executed_at = datetime.now(timezone.utc)
+    result = TestResult(
+        test_run=run,
+        test_case=item.test_case,
+        result=result_value,
+        executed_at=executed_at,
+        notes=notes,
+        case_key_snapshot=item.case_key_snapshot,
+        case_title_snapshot=item.case_title_snapshot,
+        feature_snapshot=item.feature_snapshot,
+    )
+    db.session.add(result)
+    db.session.flush()
+
+    summary = test_run_summary(run)
+    run.finished_at = executed_at if summary["not_run"] == 0 else None
+    db.session.commit()
+    return redirect(url_for("test_run_details", run_id=run.id))
+
+
 @app.get("/releases")
 def releases():
     all_releases = db.session.scalars(
@@ -1585,6 +2007,11 @@ def release_details(release_id):
         release=release,
         report=release_report_stats(release),
         execution_count=execution_count,
+        run_summaries={
+            run.id: test_run_summary(run)
+            for run in release.runs
+            if run.items
+        },
     )
 
 
@@ -1863,6 +2290,34 @@ def api_jira_stories():
         "project": JIRA_PROJECT_KEY,
         "stories": stories,
     })
+
+
+@app.get("/api/test-runs")
+def api_test_runs():
+    runs = db.session.scalars(
+        db.select(TestRun).order_by(TestRun.created_at.desc(), TestRun.id.desc())
+    ).all()
+    payload = []
+    for run in runs:
+        summary = test_run_summary(run)
+        if not run.items:
+            continue
+        payload.append({
+            "id": run.id,
+            "name": run.name,
+            "release_id": run.release_id,
+            "release": run.release.version if run.release else None,
+            "execution_type": run.execution_type,
+            "environment": run.environment,
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+            "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+            "summary": {
+                key: value
+                for key, value in summary.items()
+                if key != "rows"
+            },
+        })
+    return jsonify(payload)
 
 
 @app.get("/api/releases")
