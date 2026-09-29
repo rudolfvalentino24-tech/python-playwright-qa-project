@@ -174,7 +174,19 @@ def validate_case_key(case_key):
 
 
 def set_jira_links(case, jira_keys):
-    case.jira_links = [TestCaseJiraLink(jira_key=key) for key in jira_keys]
+    """Synchronize Jira links without reinserting links that already exist."""
+    requested_keys = set(jira_keys)
+
+    # Remove only Jira links the user removed from the form
+    for link in list(case.jira_links):
+        if link.jira_key not in requested_keys:
+            case.jira_links.remove(link)
+
+    # Add only genuinely new Jira links
+    existing_keys = {link.jira_key for link in case.jira_links}
+    for jira_key in jira_keys:
+        if jira_key not in existing_keys:
+            case.jira_links.append(TestCaseJiraLink(jira_key=jira_key))
 
 
 def grouped_cases(cases):
