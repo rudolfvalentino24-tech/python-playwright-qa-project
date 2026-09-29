@@ -139,9 +139,9 @@ main{max-width:1320px;margin:0 auto;padding:24px}.stats{display:grid;grid-templa
 .grid{display:grid;grid-template-columns:1.25fr .75fr;gap:18px}.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px}.card h2{margin:0 0 14px;font-size:18px}
 .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}input,select,textarea,button{font:inherit}input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text)}textarea{min-height:82px;resize:vertical}.toolbar input{flex:1;min-width:220px}.toolbar select{width:160px}
 button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:600}.primary{background:var(--accent);color:#fff}.primary:hover{background:var(--accent2)}.secondary{background:#f1f2f4;color:var(--text)}.danger{background:#ffebe6;color:var(--danger)}
-.case{border:1px solid var(--border);border-radius:9px;padding:14px;margin:10px 0}.case-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.case-title{font-weight:700}.meta{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.pill{font-size:12px;padding:3px 7px;border-radius:999px;background:#f1f2f4;color:#44546f}.jira{color:var(--accent);text-decoration:none;font-weight:600}.details{color:var(--muted);font-size:13px;white-space:pre-wrap}.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;align-items:center}.button-link{display:inline-block;text-decoration:none;border-radius:7px;padding:9px 13px;font-weight:600}.rename-form{display:flex;gap:6px;align-items:center}.rename-form input{width:190px}
+.case{border:1px solid var(--border);border-radius:9px;padding:14px;margin:10px 0}.case-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.case-title{font-weight:700}.meta{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.pill{font-size:12px;padding:3px 7px;border-radius:999px;background:#f1f2f4;color:#44546f}.jira{color:var(--accent);text-decoration:none;font-weight:600}.details{color:var(--muted);font-size:13px;white-space:pre-wrap}.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;align-items:center}.button-link{display:inline-block;text-decoration:none;border-radius:7px;padding:9px 13px;font-weight:600}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field{margin-bottom:11px}.field label{display:block;font-size:12px;font-weight:700;color:#44546f;margin-bottom:5px}.hint{font-size:12px;color:var(--muted);margin-top:5px}.empty{text-align:center;color:var(--muted);padding:36px 10px}
-@media(max-width:900px){.stats{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}}@media(max-width:520px){.stats{grid-template-columns:1fr}main{padding:14px}header{padding:14px 16px}.rename-form{width:100%}.rename-form input{width:100%}}
+@media(max-width:900px){.stats{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}}@media(max-width:520px){.stats{grid-template-columns:1fr}main{padding:14px}header{padding:14px 16px}}
 </style>
 </head>
 <body>
@@ -176,7 +176,10 @@ button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:60
                 <span class="pill">{{ c.type }}</span>
                 <span class="pill">{{ c.priority }}</span>
                 <span class="pill">{{ c.status }}</span>
-                {% if c.jira_key %}<a class="jira" target="_blank" rel="noopener" href="{{ jira_base }}/{{ c.jira_key }}">{{ c.jira_key }}</a>{% endif %}
+                {% if c.jira_key %}
+                  <a class="jira" target="_blank" rel="noopener" href="{{ jira_base }}/{{ c.jira_key }}">{{ c.jira_key }}</a>
+                  <a class="jira" href="{{ url_for('jira_story_cases', jira_key=c.jira_key) }}">Story view</a>
+                {% endif %}
               </div>
             </div>
           </div>
@@ -189,12 +192,10 @@ button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:60
 
           <div class="actions">
             <a class="secondary button-link" href="{{ url_for('edit_case', case_key=c.case_key) }}">Edit</a>
-
             <form method="post" action="{{ url_for('set_status', case_key=c.case_key) }}" style="display:flex;gap:6px">
               <select name="status" style="width:auto">{% for s in statuses %}<option value="{{ s }}" {% if s == c.status %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
               <button class="secondary">Update status</button>
             </form>
-
             <form method="post" action="{{ url_for('delete_case', case_key=c.case_key) }}" onsubmit="return confirm('Delete {{ c.case_key }}?')">
               <button class="danger">Delete</button>
             </form>
@@ -213,7 +214,6 @@ button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:60
           <label>Title</label>
           <input name="title" required placeholder="Unauthenticated user is redirected to login">
         </div>
-
         <div class="form-row">
           <div class="field">
             <label>Jira story</label>
@@ -225,12 +225,10 @@ button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:60
             <div class="hint" id="caseIdHint">Example: SCRUM-6-TC-001</div>
           </div>
         </div>
-
         <div class="form-row">
           <div class="field"><label>Priority</label><select name="priority"><option>Medium</option><option>High</option><option>Critical</option><option>Low</option></select></div>
           <div class="field"><label>Type</label><select name="type"><option>Manual</option><option>Automated</option></select></div>
         </div>
-
         <div class="field"><label>Status</label><select name="status"><option>Draft</option><option>Ready</option><option>Passed</option><option>Failed</option><option>Blocked</option></select></div>
         <div class="field"><label>Preconditions</label><textarea name="preconditions" placeholder="User is not logged in"></textarea></div>
         <div class="field"><label>Steps</label><textarea name="steps" required placeholder="Open the Test Hub main page"></textarea><div class="hint">One step per line.</div></div>
@@ -265,6 +263,63 @@ function updateIdHint(){
 """
 
 
+STORY_PAGE_HTML = """
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ jira_key }} test cases - Test Hub</title>
+<style>
+:root{--bg:#f4f6f8;--surface:#fff;--text:#172b4d;--muted:#6b778c;--border:#dfe1e6;--accent:#0c66e4}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;background:var(--bg);color:var(--text)}
+header{background:#172b4d;color:#fff;padding:18px 28px}.wrap{max-width:980px;margin:0 auto;padding:24px}
+.top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px}.top h1{margin:0 0 5px;font-size:25px}.muted{color:var(--muted)}
+.actions{display:flex;gap:8px;flex-wrap:wrap}.button{display:inline-block;text-decoration:none;border-radius:7px;padding:9px 13px;font-weight:700;background:#f1f2f4;color:var(--text)}.primary{background:var(--accent);color:#fff}
+.case{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin:12px 0}.title{font-size:17px;font-weight:700}.meta{display:flex;gap:7px;flex-wrap:wrap;margin:9px 0}.pill{font-size:12px;padding:3px 7px;border-radius:999px;background:#f1f2f4;color:#44546f}.details{font-size:13px;color:var(--muted);white-space:pre-wrap;margin-top:7px}.empty{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:30px;text-align:center;color:var(--muted)}
+@media(max-width:650px){.top{flex-direction:column}}
+</style>
+</head>
+<body>
+<header><strong>🧪 Test Hub</strong></header>
+<main class="wrap">
+  <div class="top">
+    <div>
+      <h1>{{ jira_key }} test cases</h1>
+      <div class="muted">{{ cases|length }} linked test case{% if cases|length != 1 %}s{% endif %}</div>
+    </div>
+    <div class="actions">
+      <a class="button" href="{{ url_for('index') }}">All test cases</a>
+      <a class="button primary" target="_blank" rel="noopener" href="{{ jira_base }}/{{ jira_key }}">Open {{ jira_key }} in Jira</a>
+    </div>
+  </div>
+
+  {% for c in cases %}
+    <article class="case">
+      <div class="title">{{ c.case_key }} — {{ c.title }}</div>
+      <div class="meta">
+        <span class="pill">{{ c.type }}</span>
+        <span class="pill">{{ c.priority }}</span>
+        <span class="pill">{{ c.status }}</span>
+      </div>
+      {% if c.preconditions %}<div class="details"><strong>Preconditions:</strong> {{ c.preconditions }}</div>{% endif %}
+      <div class="details"><strong>Steps:</strong>
+{% for step in c.steps %}{{ loop.index }}. {{ step.action }}{% if not loop.last %}
+{% endif %}{% endfor %}</div>
+      <div class="details"><strong>Expected:</strong> {{ c.expected_result }}</div>
+      <div class="actions" style="margin-top:12px">
+        <a class="button" href="{{ url_for('edit_case', case_key=c.case_key) }}">Edit test case</a>
+      </div>
+    </article>
+  {% else %}
+    <div class="empty">No test cases are linked to {{ jira_key }} yet.</div>
+  {% endfor %}
+</main>
+</body>
+</html>
+"""
+
+
 @app.get("/")
 def index():
     cases = db.session.scalars(db.select(TestCase).order_by(TestCase.id.desc())).all()
@@ -279,6 +334,26 @@ def index():
         cases=cases,
         stats=stats,
         statuses=["Draft", "Ready", "Passed", "Failed", "Blocked"],
+        jira_base=JIRA_BASE_URL.rstrip("/"),
+    )
+
+
+@app.get("/jira/<jira_key>")
+def jira_story_cases(jira_key):
+    jira_key = jira_key.strip().upper()
+    if not JIRA_KEY_PATTERN.match(jira_key):
+        return "Invalid Jira key.", 400
+
+    cases = db.session.scalars(
+        db.select(TestCase)
+        .where(TestCase.jira_key == jira_key)
+        .order_by(TestCase.id)
+    ).all()
+
+    return render_template_string(
+        STORY_PAGE_HTML,
+        jira_key=jira_key,
+        cases=cases,
         jira_base=JIRA_BASE_URL.rstrip("/"),
     )
 
@@ -365,6 +440,9 @@ textarea{min-height:100px;resize:vertical}.actions{display:flex;gap:10px;margin-
       <div class="field"><label>Expected result</label><textarea name="expected_result" required>{{ case.expected_result }}</textarea></div>
       <div class="actions">
         <button class="primary" type="submit">Save changes</button>
+        {% if case.jira_key %}
+          <a class="cancel" href="{{ url_for('jira_story_cases', jira_key=case.jira_key) }}">Story view</a>
+        {% endif %}
         <a class="cancel" href="{{ url_for('index') }}">Cancel</a>
       </div>
     </form>
@@ -474,6 +552,20 @@ def delete_case(case_key):
 @app.get("/api/test-cases")
 def api_test_cases():
     cases = db.session.scalars(db.select(TestCase).order_by(TestCase.id)).all()
+    return jsonify([case.to_dict() for case in cases])
+
+
+@app.get("/api/jira/<jira_key>/test-cases")
+def api_jira_test_cases(jira_key):
+    jira_key = jira_key.strip().upper()
+    if not JIRA_KEY_PATTERN.match(jira_key):
+        return jsonify({"error": "Invalid Jira key."}), 400
+
+    cases = db.session.scalars(
+        db.select(TestCase)
+        .where(TestCase.jira_key == jira_key)
+        .order_by(TestCase.id)
+    ).all()
     return jsonify([case.to_dict() for case in cases])
 
 
