@@ -278,7 +278,9 @@ main{max-width:1320px;margin:0 auto;padding:24px}.stats{display:grid;grid-templa
 button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:600}.primary{background:var(--accent);color:#fff}.primary:hover{background:var(--accent2)}.secondary{background:#f1f2f4;color:var(--text)}.danger{background:#ffebe6;color:var(--danger)}
 .feature-group{border:1px solid var(--border);border-radius:10px;margin:14px 0;overflow:hidden}.feature-head{padding:13px 15px;background:#f7f8f9;display:flex;align-items:center;justify-content:space-between;gap:10px}.feature-title{font-weight:800;font-size:16px}.feature-count{font-size:12px;color:var(--muted)}
 .case{border-top:1px solid var(--border);padding:14px}.case:first-of-type{border-top:0}.case-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.case-title{font-weight:700}.meta{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.pill{font-size:12px;padding:3px 7px;border-radius:999px;background:#f1f2f4;color:#44546f}.jira{color:var(--accent);text-decoration:none;font-weight:700}.details{color:var(--muted);font-size:13px;white-space:pre-wrap}.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;align-items:center}.button-link{display:inline-block;text-decoration:none;border-radius:7px;padding:9px 13px;font-weight:600}
-.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field{margin-bottom:11px}.field label{display:block;font-size:12px;font-weight:700;color:#44546f;margin-bottom:5px}.hint{font-size:12px;color:var(--muted);margin-top:5px}.empty{text-align:center;color:var(--muted);padding:36px 10px}.jira-picker{border:1px solid var(--border);border-radius:8px;padding:10px;background:#fafbfc}.jira-picker-head{display:flex;gap:7px;margin-bottom:8px}.jira-picker-head input{flex:1}.jira-story-list{max-height:190px;overflow:auto;display:flex;flex-direction:column;gap:5px}.jira-story{width:100%;text-align:left;background:#fff;border:1px solid var(--border);font-weight:500}.jira-story.selected{border-color:var(--accent);background:#e9f2ff}.jira-story-key{font-weight:800;color:var(--accent)}.jira-story-summary{color:#44546f}.jira-picker-message{font-size:12px;color:var(--muted);padding:7px 2px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field{margin-bottom:11px}.field label{display:block;font-size:12px;font-weight:700;color:#44546f;margin-bottom:5px}.hint{font-size:12px;color:var(--muted);margin-top:5px}.empty{text-align:center;color:var(--muted);padding:36px 10px}
+.jira-selected-list{display:flex;flex-direction:column;gap:7px;margin-bottom:8px}.jira-selected-empty{padding:10px;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-size:13px}.jira-selected-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#fafbfc}.jira-selected-main{flex:1;color:var(--text);text-decoration:none;min-width:0}.jira-selected-main:hover .jira-story-key{text-decoration:underline}.jira-story-key{font-weight:800;color:var(--accent)}.jira-story-summary{color:#44546f}.jira-open{color:var(--accent);text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap}.jira-remove{background:#ffebe6;color:var(--danger);padding:6px 9px;font-size:12px}
+.modal-backdrop{position:fixed;inset:0;background:rgba(23,43,77,.48);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}.modal-backdrop[hidden]{display:none}.jira-modal{width:min(720px,100%);max-height:82vh;background:#fff;border-radius:12px;box-shadow:0 18px 60px rgba(9,30,66,.28);display:flex;flex-direction:column}.jira-modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--border)}.jira-modal-head h3{margin:0}.jira-modal-body{padding:16px 18px;overflow:auto}.jira-modal-search{margin-bottom:12px}.jira-modal-list{display:flex;flex-direction:column;gap:6px;max-height:430px;overflow:auto}.jira-modal-ticket{width:100%;text-align:left;background:#fff;border:1px solid var(--border);padding:10px 12px;font-weight:500}.jira-modal-ticket.selected{border-color:var(--accent);background:#e9f2ff}.jira-modal-message{font-size:13px;color:var(--muted);padding:10px 2px}.jira-modal-actions{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border)}
 @media(max-width:900px){.stats{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}}@media(max-width:520px){.stats{grid-template-columns:1fr}main{padding:14px}header{padding:14px 16px}}
 </style>
 </head>
@@ -370,17 +372,10 @@ button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:60
         </div>
         <div class="field">
           <label>Jira stories</label>
-          <input id="createJiraKeys" name="jira_keys" placeholder="SCRUM-6, SCRUM-7">
-          <div class="jira-picker">
-            <div class="jira-picker-head">
-              <input id="createJiraSearch" type="search" placeholder="Search Jira stories..." oninput="renderJiraStories('create')">
-              <button class="secondary" type="button" onclick="loadJiraStories('create')">Refresh</button>
-            </div>
-            <div id="createJiraStoryList" class="jira-story-list">
-              <div class="jira-picker-message">Loading Jira stories…</div>
-            </div>
-          </div>
-          <div class="hint">Select any number of Jira stories. You can still type Jira keys manually if needed.</div>
+          <input id="createJiraKeys" name="jira_keys" type="hidden">
+          <div id="createSelectedJiraStories" class="jira-selected-list"></div>
+          <button class="secondary" type="button" onclick="openJiraModal('create')">Add Jira ticket</button>
+          <div class="hint">A test case can be linked to multiple Jira stories.</div>
         </div>
         <div class="field">
           <label>Test case ID</label>
@@ -401,8 +396,27 @@ button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;font-weight:60
   </section>
 </main>
 
+<div id="createJiraModal" class="modal-backdrop" hidden>
+  <div class="jira-modal" role="dialog" aria-modal="true" aria-labelledby="createJiraModalTitle">
+    <div class="jira-modal-head">
+      <h3 id="createJiraModalTitle">Add Jira ticket</h3>
+      <button class="secondary" type="button" onclick="closeJiraModal('create')">Cancel</button>
+    </div>
+    <div class="jira-modal-body">
+      <input id="createJiraModalSearch" class="jira-modal-search" type="search" placeholder="Search Jira key or title..." oninput="renderJiraModalStories('create')">
+      <div id="createJiraModalList" class="jira-modal-list"></div>
+    </div>
+    <div class="jira-modal-actions">
+      <button class="secondary" type="button" onclick="closeJiraModal('create')">Cancel</button>
+      <button class="primary" type="button" onclick="confirmJiraSelection('create')">Add selected</button>
+    </div>
+  </div>
+</div>
+
 <script>
 let jiraStories=[];
+const jiraBrowseBase='{{ jira_base }}';
+const jiraModalSelections={};
 
 function filterCases(){
   const q=document.getElementById('search').value.trim().toLowerCase();
@@ -423,63 +437,121 @@ function filterCases(){
   });
 }
 
-function selectedJiraKeys(prefix){
-  const input=document.getElementById(prefix+'JiraKeys');
-  return new Set(input.value.split(/[\\s,;]+/).map(v=>v.trim().toUpperCase()).filter(Boolean));
-}
-
-function toggleJiraStory(prefix,key){
-  const selected=selectedJiraKeys(prefix);
-  selected.has(key)?selected.delete(key):selected.add(key);
-  document.getElementById(prefix+'JiraKeys').value=[...selected].join(', ');
-  renderJiraStories(prefix);
-}
-
-function renderJiraStories(prefix){
-  const list=document.getElementById(prefix+'JiraStoryList');
-  if(!list) return;
-  const search=document.getElementById(prefix+'JiraSearch').value.trim().toLowerCase();
-  const selected=selectedJiraKeys(prefix);
-  const matches=jiraStories.filter(story=>
-    !search || story.key.toLowerCase().includes(search) || story.summary.toLowerCase().includes(search)
-  );
-
-  if(!matches.length){
-    list.innerHTML='<div class="jira-picker-message">No matching Jira stories.</div>';
-    return;
-  }
-
-  list.innerHTML=matches.map(story=>{
-    const isSelected=selected.has(story.key);
-    return `<button type="button" class="jira-story ${isSelected?'selected':''}" data-jira-key="${story.key}">
-      <span class="jira-story-key">${story.key}</span> —
-      <span class="jira-story-summary">${escapeHtml(story.summary)}</span>
-      ${story.status?` <small>(${escapeHtml(story.status)})</small>`:''}
-    </button>`;
-  }).join('');
-
-  list.querySelectorAll('.jira-story').forEach(button=>{
-    button.addEventListener('click',()=>toggleJiraStory(prefix,button.dataset.jiraKey));
-  });
-}
-
 function escapeHtml(value){
   const div=document.createElement('div');
   div.textContent=value || '';
   return div.innerHTML;
 }
 
+function selectedJiraKeys(prefix){
+  const value=document.getElementById(prefix+'JiraKeys').value.trim();
+  return new Set(value?value.split(',').map(v=>v.trim().toUpperCase()).filter(Boolean):[]);
+}
+
+function storyByKey(key){
+  return jiraStories.find(story=>story.key===key);
+}
+
+function renderSelectedJiraStories(prefix){
+  const container=document.getElementById(prefix+'SelectedJiraStories');
+  if(!container) return;
+  const keys=[...selectedJiraKeys(prefix)];
+
+  if(!keys.length){
+    container.innerHTML='<div class="jira-selected-empty">No Jira tickets linked.</div>';
+    return;
+  }
+
+  container.innerHTML=keys.map(key=>{
+    const story=storyByKey(key);
+    const summary=story?story.summary:'';
+    return `<div class="jira-selected-row">
+      <a class="jira-selected-main" href="/jira/${encodeURIComponent(key)}">
+        <span class="jira-story-key">${escapeHtml(key)}</span>
+        ${summary?` — <span class="jira-story-summary">${escapeHtml(summary)}</span>`:''}
+      </a>
+      <a class="jira-open" href="${jiraBrowseBase}/${encodeURIComponent(key)}" target="_blank" rel="noopener">Open in Jira</a>
+      <button class="jira-remove" type="button" data-remove-jira="${escapeHtml(key)}">Remove</button>
+    </div>`;
+  }).join('');
+
+  container.querySelectorAll('[data-remove-jira]').forEach(button=>{
+    button.addEventListener('click',()=>removeJiraStory(prefix,button.dataset.removeJira));
+  });
+}
+
+function removeJiraStory(prefix,key){
+  const selected=selectedJiraKeys(prefix);
+  selected.delete(key);
+  document.getElementById(prefix+'JiraKeys').value=[...selected].join(', ');
+  renderSelectedJiraStories(prefix);
+}
+
+function openJiraModal(prefix){
+  jiraModalSelections[prefix]=new Set(selectedJiraKeys(prefix));
+  document.getElementById(prefix+'JiraModalSearch').value='';
+  document.getElementById(prefix+'JiraModal').hidden=false;
+  renderJiraModalStories(prefix);
+  document.getElementById(prefix+'JiraModalSearch').focus();
+}
+
+function closeJiraModal(prefix){
+  document.getElementById(prefix+'JiraModal').hidden=true;
+  delete jiraModalSelections[prefix];
+}
+
+function toggleModalJiraStory(prefix,key){
+  const selected=jiraModalSelections[prefix] || new Set();
+  selected.has(key)?selected.delete(key):selected.add(key);
+  jiraModalSelections[prefix]=selected;
+  renderJiraModalStories(prefix);
+}
+
+function renderJiraModalStories(prefix){
+  const list=document.getElementById(prefix+'JiraModalList');
+  if(!list) return;
+  const search=document.getElementById(prefix+'JiraModalSearch').value.trim().toLowerCase();
+  const selected=jiraModalSelections[prefix] || new Set();
+  const matches=jiraStories.filter(story=>
+    !search || story.key.toLowerCase().includes(search) || story.summary.toLowerCase().includes(search)
+  );
+
+  if(!matches.length){
+    list.innerHTML='<div class="jira-modal-message">No matching Jira tickets.</div>';
+    return;
+  }
+
+  list.innerHTML=matches.map(story=>{
+    const isSelected=selected.has(story.key);
+    return `<button type="button" class="jira-modal-ticket ${isSelected?'selected':''}" data-jira-key="${story.key}">
+      <span class="jira-story-key">${escapeHtml(story.key)}</span> —
+      <span class="jira-story-summary">${escapeHtml(story.summary)}</span>
+      ${story.status?` <small>(${escapeHtml(story.status)})</small>`:''}
+    </button>`;
+  }).join('');
+
+  list.querySelectorAll('[data-jira-key]').forEach(button=>{
+    button.addEventListener('click',()=>toggleModalJiraStory(prefix,button.dataset.jiraKey));
+  });
+}
+
+function confirmJiraSelection(prefix){
+  const selected=jiraModalSelections[prefix] || new Set();
+  document.getElementById(prefix+'JiraKeys').value=[...selected].join(', ');
+  renderSelectedJiraStories(prefix);
+  closeJiraModal(prefix);
+}
+
 async function loadJiraStories(prefix){
-  const list=document.getElementById(prefix+'JiraStoryList');
-  list.innerHTML='<div class="jira-picker-message">Loading Jira stories…</div>';
   try{
     const response=await fetch('/api/jira/stories');
     const data=await response.json();
     if(!response.ok) throw new Error(data.error || 'Unable to load Jira stories.');
     jiraStories=data.stories || [];
-    renderJiraStories(prefix);
+    renderSelectedJiraStories(prefix);
   }catch(error){
-    list.innerHTML='<div class="jira-picker-message">'+escapeHtml(error.message)+' Manual Jira-key entry is still available above.</div>';
+    const container=document.getElementById(prefix+'SelectedJiraStories');
+    if(container) container.innerHTML='<div class="jira-selected-empty">'+escapeHtml(error.message)+'</div>';
   }
 }
 
@@ -567,7 +639,9 @@ main{max-width:820px;margin:32px auto;padding:0 20px}.card{background:var(--surf
 h1{margin:0 0 20px;font-size:22px}.field{margin-bottom:14px}.field label{display:block;font-size:12px;font-weight:700;color:#44546f;margin-bottom:5px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}input,select,textarea,button{font:inherit}input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text)}
 textarea{min-height:100px;resize:vertical}.actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}.primary{background:var(--accent);color:#fff;border:0;border-radius:7px;padding:10px 14px;font-weight:700;cursor:pointer}.primary:hover{background:var(--accent2)}
-.cancel{background:#f1f2f4;color:var(--text);text-decoration:none;border-radius:7px;padding:10px 14px;font-weight:700}.hint{font-size:12px;color:var(--muted);margin-top:5px}.jira-picker{border:1px solid var(--border);border-radius:8px;padding:10px;background:#fafbfc}.jira-picker-head{display:flex;gap:7px;margin-bottom:8px}.jira-picker-head input{flex:1}.jira-story-list{max-height:210px;overflow:auto;display:flex;flex-direction:column;gap:5px}.jira-story{width:100%;text-align:left;background:#fff;border:1px solid var(--border);border-radius:7px;padding:8px 10px;cursor:pointer}.jira-story.selected{border-color:var(--accent);background:#e9f2ff}.jira-story-key{font-weight:800;color:var(--accent)}.jira-picker-message{font-size:12px;color:var(--muted);padding:7px 2px}
+.cancel{background:#f1f2f4;color:var(--text);text-decoration:none;border-radius:7px;padding:10px 14px;font-weight:700}.hint{font-size:12px;color:var(--muted);margin-top:5px}
+.jira-selected-list{display:flex;flex-direction:column;gap:7px;margin-bottom:8px}.jira-selected-empty{padding:10px;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-size:13px}.jira-selected-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#fafbfc}.jira-selected-main{flex:1;color:var(--text);text-decoration:none;min-width:0}.jira-selected-main:hover .jira-story-key{text-decoration:underline}.jira-story-key{font-weight:800;color:var(--accent)}.jira-story-summary{color:#44546f}.jira-open{color:var(--accent);text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap}.jira-remove{background:#ffebe6;color:#ae2a19;border:0;border-radius:7px;padding:6px 9px;font-size:12px;cursor:pointer}
+.modal-backdrop{position:fixed;inset:0;background:rgba(23,43,77,.48);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}.modal-backdrop[hidden]{display:none}.jira-modal{width:min(720px,100%);max-height:82vh;background:#fff;border-radius:12px;box-shadow:0 18px 60px rgba(9,30,66,.28);display:flex;flex-direction:column}.jira-modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--border)}.jira-modal-head h3{margin:0}.jira-modal-body{padding:16px 18px;overflow:auto}.jira-modal-search{margin-bottom:12px}.jira-modal-list{display:flex;flex-direction:column;gap:6px;max-height:430px;overflow:auto}.jira-modal-ticket{width:100%;text-align:left;background:#fff;border:1px solid var(--border);border-radius:7px;padding:10px 12px;cursor:pointer}.jira-modal-ticket.selected{border-color:var(--accent);background:#e9f2ff}.jira-modal-message{font-size:13px;color:var(--muted);padding:10px 2px}.jira-modal-actions{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border)}
 @media(max-width:650px){.form-row{grid-template-columns:1fr}}
 </style>
 </head>
@@ -583,17 +657,10 @@ textarea{min-height:100px;resize:vertical}.actions{display:flex;gap:10px;margin-
       <div class="field"><label>Title</label><input name="title" value="{{ case.title }}" required></div>
       <div class="field">
         <label>Jira stories</label>
-        <input id="editJiraKeys" name="jira_keys" value="{{ case.jira_keys|join(', ') }}" placeholder="SCRUM-6, SCRUM-7">
-        <div class="jira-picker">
-          <div class="jira-picker-head">
-            <input id="editJiraSearch" type="search" placeholder="Search Jira stories..." oninput="renderEditJiraStories()">
-            <button class="cancel" type="button" onclick="loadEditJiraStories()">Refresh</button>
-          </div>
-          <div id="editJiraStoryList" class="jira-story-list">
-            <div class="jira-picker-message">Loading Jira stories…</div>
-          </div>
-        </div>
-        <div class="hint">Select any number of Jira stories. Manual Jira-key entry remains available above.</div>
+        <input id="editJiraKeys" name="jira_keys" type="hidden" value="{{ case.jira_keys|join(', ') }}">
+        <div id="editSelectedJiraStories" class="jira-selected-list"></div>
+        <button class="cancel" type="button" onclick="openEditJiraModal()">Add Jira ticket</button>
+        <div class="hint">A test case can be linked to multiple Jira stories.</div>
       </div>
       <div class="form-row">
         <div class="field"><label>Priority</label><select name="priority">{% for p in priorities %}<option value="{{ p }}" {% if p == case.priority %}selected{% endif %}>{{ p }}</option>{% endfor %}</select></div>
@@ -606,18 +673,33 @@ textarea{min-height:100px;resize:vertical}.actions{display:flex;gap:10px;margin-
       <div class="field"><label>Expected result</label><textarea name="expected_result" required>{{ case.expected_result }}</textarea></div>
       <div class="actions">
         <button class="primary" type="submit">Save changes</button>
-        <div id="jiraViewButtons" class="actions" style="margin-top:0"></div>
         <a class="cancel" href="{{ url_for('index') }}">Cancel</a>
       </div>
     </form>
   </div>
 </main>
+
+<div id="editJiraModal" class="modal-backdrop" hidden>
+  <div class="jira-modal" role="dialog" aria-modal="true" aria-labelledby="editJiraModalTitle">
+    <div class="jira-modal-head">
+      <h3 id="editJiraModalTitle">Add Jira ticket</h3>
+      <button class="cancel" type="button" onclick="closeEditJiraModal()">Cancel</button>
+    </div>
+    <div class="jira-modal-body">
+      <input id="editJiraModalSearch" class="jira-modal-search" type="search" placeholder="Search Jira key or title..." oninput="renderEditJiraModalStories()">
+      <div id="editJiraModalList" class="jira-modal-list"></div>
+    </div>
+    <div class="jira-modal-actions">
+      <button class="cancel" type="button" onclick="closeEditJiraModal()">Cancel</button>
+      <button class="primary" type="button" onclick="confirmEditJiraSelection()">Add selected</button>
+    </div>
+  </div>
+</div>
+
 <script>
 let editJiraStories=[];
-
-function editSelectedJiraKeys(){
-  return new Set(document.getElementById('editJiraKeys').value.split(/[\\s,;]+/).map(v=>v.trim().toUpperCase()).filter(Boolean));
-}
+let editJiraModalSelection=new Set();
+const editJiraBrowseBase='{{ jira_base }}';
 
 function escapeEditHtml(value){
   const div=document.createElement('div');
@@ -625,72 +707,112 @@ function escapeEditHtml(value){
   return div.innerHTML;
 }
 
-function toggleEditJiraStory(key){
-  const selected=editSelectedJiraKeys();
-  selected.has(key)?selected.delete(key):selected.add(key);
-  document.getElementById('editJiraKeys').value=[...selected].join(', ');
-  renderEditJiraStories();
-  renderJiraViewButtons();
+function editSelectedJiraKeys(){
+  const value=document.getElementById('editJiraKeys').value.trim();
+  return new Set(value?value.split(',').map(v=>v.trim().toUpperCase()).filter(Boolean):[]);
 }
 
-function renderJiraViewButtons(){
-  const container=document.getElementById('jiraViewButtons');
-  if(!container) return;
+function editStoryByKey(key){
+  return editJiraStories.find(story=>story.key===key);
+}
 
+function renderEditSelectedJiraStories(){
+  const container=document.getElementById('editSelectedJiraStories');
   const keys=[...editSelectedJiraKeys()];
-  container.innerHTML=keys.map(key=>
-    '<a class="cancel" href="/jira/'+encodeURIComponent(key)+'">'+escapeEditHtml(key)+' view</a>'
-  ).join('');
+
+  if(!keys.length){
+    container.innerHTML='<div class="jira-selected-empty">No Jira tickets linked.</div>';
+    return;
+  }
+
+  container.innerHTML=keys.map(key=>{
+    const story=editStoryByKey(key);
+    const summary=story?story.summary:'';
+    return `<div class="jira-selected-row">
+      <a class="jira-selected-main" href="/jira/${encodeURIComponent(key)}">
+        <span class="jira-story-key">${escapeEditHtml(key)}</span>
+        ${summary?` — <span class="jira-story-summary">${escapeEditHtml(summary)}</span>`:''}
+      </a>
+      <a class="jira-open" href="${editJiraBrowseBase}/${encodeURIComponent(key)}" target="_blank" rel="noopener">Open in Jira</a>
+      <button class="jira-remove" type="button" data-remove-jira="${escapeEditHtml(key)}">Remove</button>
+    </div>`;
+  }).join('');
+
+  container.querySelectorAll('[data-remove-jira]').forEach(button=>{
+    button.addEventListener('click',()=>removeEditJiraStory(button.dataset.removeJira));
+  });
 }
 
-function renderEditJiraStories(){
-  const list=document.getElementById('editJiraStoryList');
-  const search=document.getElementById('editJiraSearch').value.trim().toLowerCase();
+function removeEditJiraStory(key){
   const selected=editSelectedJiraKeys();
+  selected.delete(key);
+  document.getElementById('editJiraKeys').value=[...selected].join(', ');
+  renderEditSelectedJiraStories();
+}
+
+function openEditJiraModal(){
+  editJiraModalSelection=new Set(editSelectedJiraKeys());
+  document.getElementById('editJiraModalSearch').value='';
+  document.getElementById('editJiraModal').hidden=false;
+  renderEditJiraModalStories();
+  document.getElementById('editJiraModalSearch').focus();
+}
+
+function closeEditJiraModal(){
+  document.getElementById('editJiraModal').hidden=true;
+}
+
+function toggleEditJiraModalStory(key){
+  editJiraModalSelection.has(key)?editJiraModalSelection.delete(key):editJiraModalSelection.add(key);
+  renderEditJiraModalStories();
+}
+
+function renderEditJiraModalStories(){
+  const list=document.getElementById('editJiraModalList');
+  const search=document.getElementById('editJiraModalSearch').value.trim().toLowerCase();
   const matches=editJiraStories.filter(story=>
     !search || story.key.toLowerCase().includes(search) || story.summary.toLowerCase().includes(search)
   );
+
   if(!matches.length){
-    list.innerHTML='<div class="jira-picker-message">No matching Jira stories.</div>';
+    list.innerHTML='<div class="jira-modal-message">No matching Jira tickets.</div>';
     return;
   }
+
   list.innerHTML=matches.map(story=>{
-    const isSelected=selected.has(story.key);
-    return `<button type="button" class="jira-story ${isSelected?'selected':''}" data-jira-key="${story.key}">
-      <span class="jira-story-key">${story.key}</span> —
-      ${escapeEditHtml(story.summary)}
+    const isSelected=editJiraModalSelection.has(story.key);
+    return `<button type="button" class="jira-modal-ticket ${isSelected?'selected':''}" data-jira-key="${story.key}">
+      <span class="jira-story-key">${escapeEditHtml(story.key)}</span> —
+      <span class="jira-story-summary">${escapeEditHtml(story.summary)}</span>
       ${story.status?` <small>(${escapeEditHtml(story.status)})</small>`:''}
     </button>`;
   }).join('');
 
-  list.querySelectorAll('.jira-story').forEach(button=>{
-    button.addEventListener('click',()=>toggleEditJiraStory(button.dataset.jiraKey));
+  list.querySelectorAll('[data-jira-key]').forEach(button=>{
+    button.addEventListener('click',()=>toggleEditJiraModalStory(button.dataset.jiraKey));
   });
 }
 
+function confirmEditJiraSelection(){
+  document.getElementById('editJiraKeys').value=[...editJiraModalSelection].join(', ');
+  renderEditSelectedJiraStories();
+  closeEditJiraModal();
+}
+
 async function loadEditJiraStories(){
-  const list=document.getElementById('editJiraStoryList');
-  list.innerHTML='<div class="jira-picker-message">Loading Jira stories…</div>';
   try{
     const response=await fetch('/api/jira/stories');
     const data=await response.json();
     if(!response.ok) throw new Error(data.error || 'Unable to load Jira stories.');
     editJiraStories=data.stories || [];
-    renderEditJiraStories();
+    renderEditSelectedJiraStories();
   }catch(error){
-    list.innerHTML='<div class="jira-picker-message">'+escapeEditHtml(error.message)+' Manual Jira-key entry is still available above.</div>';
+    const container=document.getElementById('editSelectedJiraStories');
+    container.innerHTML='<div class="jira-selected-empty">'+escapeEditHtml(error.message)+'</div>';
   }
 }
 
-document.addEventListener('DOMContentLoaded',()=>{
-  loadEditJiraStories();
-  renderJiraViewButtons();
-
-  document.getElementById('editJiraKeys').addEventListener('input',()=>{
-    renderEditJiraStories();
-    renderJiraViewButtons();
-  });
-});
+document.addEventListener('DOMContentLoaded',loadEditJiraStories);
 </script>
 </body>
 </html>
@@ -711,6 +833,7 @@ def index():
         groups=grouped_cases(cases),
         stats=stats,
         statuses=["Draft", "Ready", "Passed", "Failed", "Blocked"],
+        jira_base=JIRA_BASE_URL.rstrip("/"),
     )
 
 
@@ -796,6 +919,7 @@ def edit_case(case_key):
         priorities=["Low", "Medium", "High", "Critical"],
         types=["Manual", "Automated"],
         statuses=["Draft", "Ready", "Passed", "Failed", "Blocked"],
+        jira_base=JIRA_BASE_URL.rstrip("/"),
     )
 
 
