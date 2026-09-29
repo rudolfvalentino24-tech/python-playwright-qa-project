@@ -37,12 +37,15 @@ if errorlevel 1 exit /b %errorlevel%
 echo.
 echo [5/5] Running Playwright tests...
 
+if exist report.html del /q report.html
+if exist test-results rmdir /s /q test-results
+
 if defined TEST_RUN_ID if defined TEST_CASE_IDS (
     echo Test Hub run: %TEST_RUN_ID%
     echo Selected cases: %TEST_CASE_IDS%
-    python -m pytest playwright\e2e_bdd\tests --browser_name chrome --tracing on --html=report.html --self-contained-html
+    python -m pytest playwright\e2e_bdd\tests --browser_name chrome --tracing on --screenshot only-on-failure --output=test-results --html=report.html --self-contained-html
 ) else (
-    python -m pytest playwright --browser_name chrome --tracing on --html=report.html --self-contained-html
+    python -m pytest playwright --browser_name chrome --tracing on --screenshot only-on-failure --output=test-results --html=report.html --self-contained-html
 )
 
 set TEST_EXIT_CODE=%ERRORLEVEL%
