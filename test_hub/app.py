@@ -149,10 +149,38 @@ class TestCaseJiraLink(db.Model):
     test_case = db.relationship("TestCase", back_populates="jira_links")
 
 
+class Release(db.Model):
+    __tablename__ = "releases"
+
+    id = db.Column(db.Integer, primary_key=True)
+    version = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    release_date = db.Column(db.Date, nullable=True, index=True)
+    environment = db.Column(db.String(80), nullable=False, default="")
+    git_commit = db.Column(db.String(120), nullable=False, default="")
+    notes = db.Column(db.Text, nullable=False, default="")
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    runs = db.relationship(
+        "TestRun",
+        back_populates="release",
+        order_by="TestRun.started_at",
+    )
+
+
 class TestRun(db.Model):
     __tablename__ = "test_runs"
 
     id = db.Column(db.Integer, primary_key=True)
+    release_id = db.Column(
+        db.Integer,
+        db.ForeignKey("releases.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     name = db.Column(db.String(250), nullable=False)
     execution_type = db.Column(db.String(20), nullable=False, default="Manual")
     environment = db.Column(db.String(80), nullable=False, default="")
@@ -168,6 +196,7 @@ class TestRun(db.Model):
         default=lambda: datetime.now(timezone.utc),
     )
 
+    release = db.relationship("Release", back_populates="runs")
     results = db.relationship(
         "TestResult",
         back_populates="test_run",
@@ -285,6 +314,71 @@ def test_case_execution_stats(case):
         "blocked": counts["Blocked"],
         "skipped": counts["Skipped"],
         "pass_rate": pass_rate,
+    }
+
+
+def release_latest_results(release):
+    """Return the latest result per test case for a release."""
+    latest = {}
+    results = db.session.scalars(
+        db.select(TestResult)
+        .join(TestRun)
+        .where(TestRun.release_id == release.id)
+        .order_by(TestResult.executed_at.asc(), TestResult.id.asc())
+    ).all()
+
+    for result in results:
+        latest[result.case_key_snapshot] = result
+    return list(latest.values())
+
+
+def release_report_stats(release):
+    final_results = release_latest_results(release)
+    counts = {status: 0 for status in RESULT_STATUSES}
+    feature_counts = {}
+
+    for result in final_results:
+        if result.result in counts:
+            counts[result.result] += 1
+
+        feature = result.feature_snapshot or "Uncategorized"
+        if feature not in feature_counts:
+            feature_counts[feature] = {status: 0 for status in RESULT_STATUSES}
+        if result.result in feature_counts[feature]:
+            feature_counts[feature][result.result] += 1
+
+    total = sum(counts.values())
+    decided = counts["Passed"] + counts["Failed"]
+    pass_rate = round((counts["Passed"] / decided) * 100, 1) if decided else 0
+
+    feature_rows = []
+    for feature in sorted(feature_counts):
+        row = feature_counts[feature]
+        row_total = sum(row.values())
+        row_decided = row["Passed"] + row["Failed"]
+        row_rate = round((row["Passed"] / row_decided) * 100, 1) if row_decided else 0
+        feature_rows.append({
+            "feature": feature,
+            "total": row_total,
+            "passed": row["Passed"],
+            "failed": row["Failed"],
+            "blocked": row["Blocked"],
+            "skipped": row["Skipped"],
+            "pass_rate": row_rate,
+        })
+
+    return {
+        "total": total,
+        "passed": counts["Passed"],
+        "failed": counts["Failed"],
+        "blocked": counts["Blocked"],
+        "skipped": counts["Skipped"],
+        "pass_rate": pass_rate,
+        "features": feature_rows,
+        "final_results": sorted(
+            final_results,
+            key=lambda item: (item.feature_snapshot.lower(), item.case_key_snapshot),
+        ),
     }
 
 
@@ -550,7 +644,7 @@ button:hover,.button-link:hover{transform:translateY(-1px)}
 <body>
 <header>
   <div class="brand"><div class="brand-icon">🧪</div><div><h1>Test Hub</h1><span>QA test case management</span></div></div>
-  <div class="header-note">Grouped by feature · linked to Jira stories</div>
+  <div class="header-note"><a href="{{ url_for('releases') }}" style="color:#fff;text-decoration:none;font-weight:750">Releases</a> · Grouped by feature · linked to Jira stories</div>
 </header>
 <main>
   {% if sync_warning %}
@@ -928,6 +1022,169 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 """
 
 
+RELEASES_PAGE_HTML = """
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Releases - Test Hub</title>
+<style>
+:root{--bg:#eef3fb;--surface:rgba(255,255,255,.95);--text:#111827;--muted:#6b7280;--border:#d7dfec;--accent:#2f66e8;--accent2:#2475ff;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;color:var(--text);background:radial-gradient(circle at 8% 5%,rgba(98,134,255,.17),transparent 28%),radial-gradient(circle at 94% 16%,rgba(36,117,255,.11),transparent 24%),linear-gradient(180deg,#f8faff,#eef3fb)}
+header{display:flex;align-items:center;justify-content:space-between;padding:16px 30px;background:rgba(20,42,82,.94);color:#fff;box-shadow:0 10px 30px rgba(24,47,90,.14)}
+.brand{display:flex;align-items:center;gap:12px}.brand-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#6286ff,#1f63f2);box-shadow:0 8px 22px rgba(37,99,235,.3)}.brand strong{font-size:20px}.brand span{display:block;font-size:12px;opacity:.7;margin-top:2px}
+.wrap{max-width:1180px;margin:0 auto;padding:32px 22px 50px}.top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:20px}.top h1{margin:0;font-size:30px;color:#172b4d;letter-spacing:-.6px}.subtitle{margin-top:5px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:1.35fr .65fr;gap:18px;align-items:start}.card{padding:21px;border:1px solid var(--border);border-radius:18px;background:var(--surface);box-shadow:0 16px 42px rgba(35,61,108,.07)}.card h2{margin:0 0 14px;font-size:19px;color:#172b4d}
+.button,button{display:inline-block;border:0;border-radius:10px;padding:10px 14px;text-decoration:none;font:inherit;font-weight:750;cursor:pointer}.button{background:#eef2f7;color:#20324f}.primary{background:linear-gradient(90deg,#2f66e8,#2475ff);color:#fff;box-shadow:0 8px 18px rgba(37,99,235,.2)}
+.release{padding:16px 0;border-top:1px solid #e7ebf2}.release:first-of-type{border-top:0}.release-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.release-title{font-weight:850;color:#172b4d;text-decoration:none;font-size:16px}.release-title:hover{color:#2468e5}.release-meta{margin-top:5px;color:var(--muted);font-size:13px}.summary{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.pill{padding:4px 8px;border-radius:999px;background:#eef2f7;color:#526174;font-size:12px;font-weight:700}.pass{background:#dcfce7;color:#166534}.fail{background:#fee2e2;color:#991b1b}
+label{display:block;margin:13px 0 6px;font-size:12px;font-weight:800;color:#41526c}input,textarea{width:100%;border:1px solid #ccd5e4;border-radius:11px;background:#fff;color:var(--text);font:inherit;outline:none}input{height:45px;padding:0 12px}textarea{min-height:90px;padding:10px 12px;resize:vertical}input:focus,textarea:focus{border-color:#3b73ef;box-shadow:0 0 0 4px rgba(59,115,239,.12)}.empty{padding:30px;text-align:center;color:var(--muted)}
+@media(max-width:800px){header{padding:13px 16px}.wrap{padding:22px 14px}.grid{grid-template-columns:1fr}.top{flex-direction:column}}
+</style>
+</head>
+<body>
+<header><div class="brand"><div class="brand-icon">🧪</div><div><strong>Test Hub</strong><span>QA test case management</span></div></div></header>
+<main class="wrap">
+  <div class="top">
+    <div><h1>Releases</h1><div class="subtitle">Stored QA results and release reports.</div></div>
+    <a class="button" href="{{ url_for('index') }}">All test cases</a>
+  </div>
+
+  <section class="grid">
+    <div class="card">
+      <h2>Release history</h2>
+      {% for item in release_rows %}
+        <div class="release">
+          <div class="release-head">
+            <div>
+              <a class="release-title" href="{{ url_for('release_details', release_id=item.release.id) }}">{{ item.release.version }}</a>
+              <div class="release-meta">
+                {% if item.release.release_date %}{{ item.release.release_date.strftime('%d %b %Y') }}{% else %}No release date{% endif %}
+                {% if item.release.environment %} · {{ item.release.environment }}{% endif %}
+                {% if item.release.git_commit %} · {{ item.release.git_commit }}{% endif %}
+              </div>
+            </div>
+            <strong>{{ item.stats.pass_rate }}%</strong>
+          </div>
+          <div class="summary">
+            <span class="pill">{{ item.stats.total }} tests</span>
+            <span class="pill pass">{{ item.stats.passed }} passed</span>
+            <span class="pill fail">{{ item.stats.failed }} failed</span>
+            <span class="pill">{{ item.stats.blocked }} blocked</span>
+          </div>
+        </div>
+      {% else %}
+        <div class="empty">No releases yet. Create the first one on the right.</div>
+      {% endfor %}
+    </div>
+
+    <aside class="card">
+      <h2>Create release</h2>
+      <form method="post" action="{{ url_for('create_release') }}">
+        <label>Version / Name</label>
+        <input name="version" required placeholder="1.5.0">
+        <label>Release date</label>
+        <input name="release_date" type="date">
+        <label>Environment</label>
+        <input name="environment" placeholder="Production">
+        <label>Git commit</label>
+        <input name="git_commit" placeholder="a81d934">
+        <label>Notes</label>
+        <textarea name="notes" placeholder="Optional release notes"></textarea>
+        <button class="primary" style="margin-top:14px" type="submit">Create release</button>
+      </form>
+    </aside>
+  </section>
+</main>
+</body>
+</html>
+"""
+
+
+RELEASE_PAGE_HTML = """
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ release.version }} - Test Hub</title>
+<style>
+:root{--bg:#eef3fb;--surface:rgba(255,255,255,.95);--text:#111827;--muted:#6b7280;--border:#d7dfec;--accent:#2f66e8;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;color:var(--text);background:radial-gradient(circle at 8% 5%,rgba(98,134,255,.17),transparent 28%),radial-gradient(circle at 94% 16%,rgba(36,117,255,.11),transparent 24%),linear-gradient(180deg,#f8faff,#eef3fb)}
+header{padding:16px 30px;background:rgba(20,42,82,.94);color:#fff;box-shadow:0 10px 30px rgba(24,47,90,.14)}.brand{display:flex;align-items:center;gap:12px}.brand-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#6286ff,#1f63f2);box-shadow:0 8px 22px rgba(37,99,235,.3)}.brand strong{font-size:20px}.brand span{display:block;font-size:12px;opacity:.7}
+.wrap{max-width:1120px;margin:0 auto;padding:32px 22px 50px}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:20px}.top h1{margin:0;font-size:30px;color:#172b4d}.subtitle{margin-top:6px;color:var(--muted)}.actions{display:flex;gap:8px;flex-wrap:wrap}.button{display:inline-block;padding:10px 14px;border-radius:10px;background:#eef2f7;color:#20324f;text-decoration:none;font-weight:750}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}.stat{padding:16px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:0 10px 28px rgba(35,61,108,.06)}.stat strong{display:block;font-size:26px;color:#17325d}.stat span{display:block;margin-top:5px;font-size:12px;font-weight:650;color:var(--muted)}
+.card{margin-top:18px;padding:21px;border:1px solid var(--border);border-radius:18px;background:var(--surface);box-shadow:0 16px 42px rgba(35,61,108,.07)}.card h2{margin:0 0 14px;font-size:19px;color:#172b4d}
+.info{display:flex;gap:18px;flex-wrap:wrap;color:#536277;font-size:13px}.info strong{color:#243854}.feature-row,.result-row{display:grid;gap:12px;align-items:center;padding:12px 0;border-top:1px solid #e7ebf2}.feature-row{grid-template-columns:1fr 80px 80px 80px 90px}.result-row{grid-template-columns:100px 1fr 150px}.feature-row:first-of-type,.result-row:first-of-type{border-top:0}.badge{display:inline-block;width:max-content;padding:5px 8px;border-radius:999px;font-size:12px;font-weight:800}.Passed{background:#dcfce7;color:#166534}.Failed{background:#fee2e2;color:#991b1b}.Blocked{background:#fef3c7;color:#92400e}.Skipped{background:#e5e7eb;color:#4b5563}.case-link{color:#243854;text-decoration:none;font-weight:800}.case-link:hover{color:#2468e5}.muted{color:var(--muted);font-size:12px}.empty{padding:28px;text-align:center;color:var(--muted)}
+@media(max-width:760px){header{padding:13px 16px}.wrap{padding:22px 14px}.top{flex-direction:column}.stats{grid-template-columns:1fr 1fr}.feature-row{grid-template-columns:1fr 65px 65px}.feature-row>*:nth-child(n+4){display:none}.result-row{grid-template-columns:90px 1fr}.result-row .muted{grid-column:2}}
+</style>
+</head>
+<body>
+<header><div class="brand"><div class="brand-icon">🧪</div><div><strong>Test Hub</strong><span>QA test case management</span></div></div></header>
+<main class="wrap">
+  <div class="top">
+    <div>
+      <h1>Release {{ release.version }}</h1>
+      <div class="subtitle">Stored QA release report</div>
+    </div>
+    <div class="actions"><a class="button" href="{{ url_for('releases') }}">All releases</a><a class="button" href="{{ url_for('index') }}">Test cases</a></div>
+  </div>
+
+  <section class="stats">
+    <div class="stat"><strong>{{ report.total }}</strong><span>Final test statuses</span></div>
+    <div class="stat"><strong>{{ report.passed }}</strong><span>Passed</span></div>
+    <div class="stat"><strong>{{ report.failed }}</strong><span>Failed</span></div>
+    <div class="stat"><strong>{{ report.blocked }}</strong><span>Blocked</span></div>
+    <div class="stat"><strong>{{ report.pass_rate }}%</strong><span>Pass rate</span></div>
+  </section>
+
+  <section class="card">
+    <h2>Release information</h2>
+    <div class="info">
+      <span><strong>Date:</strong> {% if release.release_date %}{{ release.release_date.strftime('%d %b %Y') }}{% else %}—{% endif %}</span>
+      <span><strong>Environment:</strong> {{ release.environment or '—' }}</span>
+      <span><strong>Git commit:</strong> {{ release.git_commit or '—' }}</span>
+      <span><strong>Executions:</strong> {{ execution_count }}</span>
+    </div>
+    {% if release.notes %}<div class="info" style="margin-top:12px"><span><strong>Notes:</strong> {{ release.notes }}</span></div>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>By feature</h2>
+    {% for feature in report.features %}
+      <div class="feature-row">
+        <strong>{{ feature.feature }}</strong>
+        <span>{{ feature.total }} total</span>
+        <span>{{ feature.passed }} passed</span>
+        <span>{{ feature.failed }} failed</span>
+        <span>{{ feature.pass_rate }}%</span>
+      </div>
+    {% else %}<div class="empty">No release results recorded yet.</div>{% endfor %}
+  </section>
+
+  <section class="card">
+    <h2>Final test results</h2>
+    {% for result in report.final_results %}
+      <div class="result-row">
+        <span class="badge {{ result.result }}">{{ result.result }}</span>
+        <div>
+          {% if result.test_case %}
+            <a class="case-link" href="{{ url_for('test_case_details', case_key=result.test_case.case_key) }}">{{ result.case_key_snapshot }} — {{ result.case_title_snapshot }}</a>
+          {% else %}
+            <strong>{{ result.case_key_snapshot }} — {{ result.case_title_snapshot }}</strong>
+          {% endif %}
+          <div class="muted">{{ result.feature_snapshot }}{% if result.test_run.environment %} · {{ result.test_run.environment }}{% endif %}</div>
+        </div>
+        <div class="muted">{{ result.executed_at.strftime('%d %b %Y %H:%M') }}</div>
+      </div>
+    {% else %}<div class="empty">No test results have been assigned to this release yet.</div>{% endfor %}
+  </section>
+</main>
+</body>
+</html>
+"""
+
+
 CASE_PAGE_HTML = """
 <!doctype html>
 <html lang="en">
@@ -958,6 +1215,7 @@ label{display:block;margin:13px 0 6px;font-size:12px;font-weight:800;color:#4152
     <div><h1>{{ case.case_key }} — {{ case.title }}</h1><div class="subtitle">{{ case.feature_name }} · execution history</div></div>
     <div class="actions">
       <a class="button" href="{{ url_for('index') }}">All test cases</a>
+      <a class="button" href="{{ url_for('releases') }}">Releases</a>
       <a class="button" href="{{ url_for('edit_case', case_key=case.case_key) }}">Edit test case</a>
     </div>
   </div>
@@ -991,6 +1249,13 @@ label{display:block;margin:13px 0 6px;font-size:12px;font-weight:800;color:#4152
         <select name="result" required>
           <option>Passed</option><option>Failed</option><option>Blocked</option><option>Skipped</option>
         </select>
+        <label>Release</label>
+        <select name="release_id">
+          <option value="">No release / standalone run</option>
+          {% for release in releases %}
+            <option value="{{ release.id }}">{{ release.version }}{% if release.environment %} · {{ release.environment }}{% endif %}</option>
+          {% endfor %}
+        </select>
         <label>Environment</label>
         <input name="environment" placeholder="Staging, Production, Local...">
         <label>Notes</label>
@@ -1008,6 +1273,7 @@ label{display:block;margin:13px 0 6px;font-size:12px;font-weight:800;color:#4152
         <div class="result-main">
           <strong>{{ result.case_key_snapshot }} — {{ result.case_title_snapshot }}</strong>
           {{ result.test_run.name }}{% if result.test_run.environment %} · {{ result.test_run.environment }}{% endif %}
+          {% if result.test_run.release %} · <a href="{{ url_for('release_details', release_id=result.test_run.release.id) }}" style="color:#2468e5;text-decoration:none;font-weight:750">{{ result.test_run.release.version }}</a>{% endif %}
           {% if result.notes %}<div>{{ result.notes }}</div>{% endif %}
         </div>
         <div class="result-date">{{ result.test_run.execution_type }}</div>
@@ -1251,6 +1517,77 @@ def index():
     )
 
 
+@app.get("/releases")
+def releases():
+    all_releases = db.session.scalars(
+        db.select(Release).order_by(Release.release_date.desc(), Release.id.desc())
+    ).all()
+    release_rows = [
+        {"release": release, "stats": release_report_stats(release)}
+        for release in all_releases
+    ]
+    return render_template_string(
+        RELEASES_PAGE_HTML,
+        release_rows=release_rows,
+    )
+
+
+@app.post("/releases")
+def create_release():
+    version = request.form.get("version", "").strip()
+    release_date_value = request.form.get("release_date", "").strip()
+    environment = request.form.get("environment", "").strip()
+    git_commit = request.form.get("git_commit", "").strip()
+    notes = request.form.get("notes", "").strip()
+
+    if not version:
+        return "Release version/name is required.", 400
+
+    existing = db.session.scalar(
+        db.select(Release.id).where(Release.version == version)
+    )
+    if existing is not None:
+        return f"Release {version} already exists.", 400
+
+    release_date = None
+    if release_date_value:
+        try:
+            release_date = datetime.strptime(release_date_value, "%Y-%m-%d").date()
+        except ValueError:
+            return "Invalid release date.", 400
+
+    release = Release(
+        version=version,
+        release_date=release_date,
+        environment=environment,
+        git_commit=git_commit,
+        notes=notes,
+    )
+    db.session.add(release)
+    db.session.commit()
+    return redirect(url_for("release_details", release_id=release.id))
+
+
+@app.get("/releases/<int:release_id>")
+def release_details(release_id):
+    release = db.session.get(Release, release_id)
+    if release is None:
+        return "Release not found.", 404
+
+    execution_count = db.session.scalar(
+        db.select(db.func.count(TestResult.id))
+        .join(TestRun)
+        .where(TestRun.release_id == release.id)
+    ) or 0
+
+    return render_template_string(
+        RELEASE_PAGE_HTML,
+        release=release,
+        report=release_report_stats(release),
+        execution_count=execution_count,
+    )
+
+
 @app.get("/jira/<jira_key>")
 def jira_story_cases(jira_key):
     jira_key = jira_key.strip().upper()
@@ -1338,11 +1675,16 @@ def test_case_details(case_key):
         .order_by(TestResult.executed_at.desc())
     ).all()
 
+    all_releases = db.session.scalars(
+        db.select(Release).order_by(Release.release_date.desc(), Release.id.desc())
+    ).all()
+
     return render_template_string(
         CASE_PAGE_HTML,
         case=case,
         results=results,
         stats=test_case_execution_stats(case),
+        releases=all_releases,
     )
 
 
@@ -1355,17 +1697,28 @@ def record_test_result(case_key):
         return "Test case not found.", 404
 
     result_value = request.form.get("result", "").strip()
+    release_id_value = request.form.get("release_id", "").strip()
     environment = request.form.get("environment", "").strip()
     notes = request.form.get("notes", "").strip()
 
     if result_value not in RESULT_STATUSES:
         return "Invalid execution result.", 400
 
+    release = None
+    if release_id_value:
+        try:
+            release = db.session.get(Release, int(release_id_value))
+        except ValueError:
+            return "Invalid release.", 400
+        if release is None:
+            return "Release not found.", 404
+
     executed_at = datetime.now(timezone.utc)
     test_run = TestRun(
+        release=release,
         name=f"Manual execution — {case.case_key}",
         execution_type="Manual",
-        environment=environment,
+        environment=environment or (release.environment if release else ""),
         started_at=executed_at,
         finished_at=executed_at,
     )
@@ -1512,6 +1865,29 @@ def api_jira_stories():
     })
 
 
+@app.get("/api/releases")
+def api_releases():
+    all_releases = db.session.scalars(
+        db.select(Release).order_by(Release.release_date.desc(), Release.id.desc())
+    ).all()
+    return jsonify([
+        {
+            "id": release.id,
+            "version": release.version,
+            "release_date": release.release_date.isoformat() if release.release_date else None,
+            "environment": release.environment,
+            "git_commit": release.git_commit,
+            "notes": release.notes,
+            "report": {
+                key: value
+                for key, value in release_report_stats(release).items()
+                if key not in {"features", "final_results"}
+            },
+        }
+        for release in all_releases
+    ])
+
+
 @app.get("/api/test-cases")
 def api_test_cases():
     cases = db.session.scalars(db.select(TestCase).order_by(TestCase.id)).all()
@@ -1555,6 +1931,14 @@ def migrate_schema_and_legacy_jira_links():
     if "feature" not in columns:
         db.session.execute(text("ALTER TABLE test_cases ADD COLUMN feature VARCHAR(120)"))
         db.session.commit()
+
+    # Existing databases already have test_runs, so add the nullable release link once.
+    inspector = inspect(db.engine)
+    if "test_runs" in inspector.get_table_names():
+        run_columns = {column["name"] for column in inspector.get_columns("test_runs")}
+        if "release_id" not in run_columns:
+            db.session.execute(text("ALTER TABLE test_runs ADD COLUMN release_id INTEGER"))
+            db.session.commit()
 
     # Move any legacy single Jira story into the new many-to-many table once.
     legacy_cases = db.session.scalars(
