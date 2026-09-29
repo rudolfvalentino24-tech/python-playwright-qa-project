@@ -3,7 +3,7 @@ Feature: Checkout
   # CHECK-01, CHECK-02 and CHECK-05 are covered by E2E-001 in storePurchase.feature.
   # See COVERAGE.md for the complete plan-to-test mapping.
 
-  Scenario Outline: CHECK-03 Required customer fields are validated
+  Scenario Outline: <case_id> Required customer field <field> is validated
     Given the admin has added a product to the cart
     When the admin opens the cart
     And the admin proceeds to checkout
@@ -14,14 +14,14 @@ Feature: Checkout
     And the "<field>" checkout field should be required
 
     Examples:
-      | field      |
-      | first name |
-      | last name  |
-      | email      |
-      | address    |
-      | country    |
+      | case_id             | field      |
+      | CHECK-03-FIRST-NAME  | first name |
+      | CHECK-03-LAST-NAME   | last name  |
+      | CHECK-03-EMAIL       | email      |
+      | CHECK-03-ADDRESS     | address    |
+      | CHECK-03-COUNTRY     | country    |
 
-  Scenario Outline: CHECK-03 Required payment fields are validated
+  Scenario Outline: <case_id> Required payment field <field> is validated
     Given the admin has added a product to the cart
     When the admin opens the cart
     And the admin proceeds to checkout
@@ -32,11 +32,11 @@ Feature: Checkout
     And the "<field>" checkout field should be required
 
     Examples:
-      | field           |
-      | cardholder name |
-      | card number     |
-      | expiry          |
-      | CVV             |
+      | case_id                  | field           |
+      | CHECK-03-CARDHOLDER-NAME  | cardholder name |
+      | CHECK-03-CARD-NUMBER      | card number     |
+      | CHECK-03-EXPIRY           | expiry          |
+      | CHECK-03-CVV              | CVV             |
 
   Scenario: CHECK-03 Order confirmation is required
     Given the admin has added a product to the cart
