@@ -28,6 +28,17 @@ bdd_sync._scan_step_definitions = _cached_step_definitions
 
 register_ai_designer(hub)
 bdd_sync.register_bdd_sync(hub)
+
+# Backward-compatible endpoint name used by the redesigned test-case page.
+# Both endpoint names resolve to the same BDD Automation view.
+if "case_automation" not in hub.app.view_functions:
+    hub.app.add_url_rule(
+        "/test-cases/<case_key>/automation",
+        endpoint="case_automation",
+        view_func=hub.app.view_functions["bdd_automation_case"],
+        methods=["GET"],
+    )
+
 register_ui_redesign(hub, ai_designer, bdd_sync)
 register_run_guards(hub)
 
