@@ -14,6 +14,7 @@ import ui_redesign
 from ai_automation import register_ai_automation
 from ai_automation_guard import apply_ai_automation_guard
 from ai_designer import register_ai_designer
+from ai_usage import apply_ai_usage_tracking, apply_ai_usage_ui
 from jira_ui_fix import apply_jira_modal_error_fix
 from results_ui_fix import apply_results_chart_fix
 from run_guards import register_run_guards
@@ -40,9 +41,11 @@ def _cached_step_definitions():
 bdd_sync._scan_step_definitions = _cached_step_definitions
 
 apply_ai_automation_guard(ai_automation)
+apply_ai_usage_tracking(ai_designer, ai_automation)
 register_ai_designer(hub)
 bdd_sync.register_bdd_sync(hub)
 register_ai_automation(hub, bdd_sync)
+apply_ai_usage_ui(ai_designer, bdd_sync)
 
 # Backward-compatible endpoint name used by the redesigned test-case page.
 # Both endpoint names resolve to the same BDD Automation view.
