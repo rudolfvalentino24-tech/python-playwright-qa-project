@@ -47,3 +47,16 @@ Feature: Authentication
       | case_id        | field    |
       | REL-UI-AUTH-06 | Username |
       | REL-UI-AUTH-07 | Password |
+
+  @regression @release
+  Scenario: AUTH-PASSWORD-REVEAL-02 Reveal password icon is not shown when the password field is only focused
+    Given the user is on the login page
+    When the user focuses on the password field
+    Then the reveal password icon should not be displayed
+
+  @regression @release @smoke
+  Scenario: AUTH-TERMS-01 User can open Terms & Conditions and return to login
+    Given the user is on the login page
+    When the user opens the Terms & Conditions
+    Then the Terms & Conditions page should be displayed
+    And the user returns to the login page

@@ -49,4 +49,18 @@ def admin_submits_missing_login_field(admin_credentials, shared_data, field):
 def login_field_is_required(shared_data, field):
     shared_data["login_page"].verifyRequiredField(field)
 
+@when("the user opens the Terms & Conditions")
+def user_opens_terms(shared_data):
+    shared_data["login_page"].openTermsAndConditions()
+
+
+@then("the Terms & Conditions page should be displayed")
+def terms_page_is_displayed(shared_data):
+    shared_data["login_page"].verifyTermsAndConditionsPage()
+
+
+@then("the user returns to the login page")
+def user_returns_to_login(shared_data):
+    shared_data["login_page"].returnToLoginPage()
+
 

@@ -85,3 +85,19 @@ class LoginPage:
         expect(field).to_be_focused()
         assert field.evaluate("element => element.validity.valueMissing")
         assert field.evaluate("element => element.validationMessage")
+
+    # Open the Terms & Conditions page from the login form
+    def openTermsAndConditions(self):
+        self.page.get_by_test_id("terms-link").click()
+
+    # Verify that the Terms & Conditions page is displayed
+    def verifyTermsAndConditionsPage(self):
+        expect(self.page).to_have_url(f"{storeURL}/terms")
+        expect(
+            self.page.get_by_role("heading", name="Terms & Conditions")
+        ).to_be_visible()
+
+    # Return from Terms & Conditions to the login page
+    def returnToLoginPage(self):
+        self.page.get_by_test_id("back-to-login").click()
+        self.verifyLoginPage()
