@@ -20,6 +20,7 @@ from results_ui_fix import apply_results_chart_fix
 from run_guards import register_run_guards
 from ui_cleanup import register_ui_cleanup
 from ui_redesign import register_ui_redesign
+from workflow_improvements import apply_workflow_improvements
 
 
 _original_step_scan = bdd_sync._scan_step_definitions
@@ -46,6 +47,7 @@ register_ai_designer(hub)
 bdd_sync.register_bdd_sync(hub)
 register_ai_automation(hub, bdd_sync)
 apply_ai_usage_ui(ai_designer, bdd_sync)
+apply_workflow_improvements(hub, ui_redesign, bdd_sync)
 
 # Backward-compatible endpoint name used by the redesigned test-case page.
 # Both endpoint names resolve to the same BDD Automation view.
