@@ -8,9 +8,11 @@ load_dotenv(Path(__file__).with_name(".env"), override=False)
 
 import app as hub
 import bdd_sync
+import ai_automation
 import ai_designer
 import ui_redesign
 from ai_automation import register_ai_automation
+from ai_automation_guard import apply_ai_automation_guard
 from ai_designer import register_ai_designer
 from jira_ui_fix import apply_jira_modal_error_fix
 from results_ui_fix import apply_results_chart_fix
@@ -37,6 +39,7 @@ def _cached_step_definitions():
 
 bdd_sync._scan_step_definitions = _cached_step_definitions
 
+apply_ai_automation_guard(ai_automation)
 register_ai_designer(hub)
 bdd_sync.register_bdd_sync(hub)
 register_ai_automation(hub, bdd_sync)
