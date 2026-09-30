@@ -10,6 +10,7 @@ import app as hub
 import bdd_sync
 import ai_designer
 import ui_redesign
+from ai_automation import register_ai_automation
 from ai_designer import register_ai_designer
 from jira_ui_fix import apply_jira_modal_error_fix
 from results_ui_fix import apply_results_chart_fix
@@ -38,6 +39,7 @@ bdd_sync._scan_step_definitions = _cached_step_definitions
 
 register_ai_designer(hub)
 bdd_sync.register_bdd_sync(hub)
+register_ai_automation(hub, bdd_sync)
 
 # Backward-compatible endpoint name used by the redesigned test-case page.
 # Both endpoint names resolve to the same BDD Automation view.
