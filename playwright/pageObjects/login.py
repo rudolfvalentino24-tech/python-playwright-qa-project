@@ -101,3 +101,11 @@ class LoginPage:
     def returnToLoginPage(self):
         self.page.get_by_test_id("back-to-login").click()
         self.verifyLoginPage()
+
+    def verifyQATrainingWarning(self):
+        expect(
+            self.page.get_by_text(
+                "This is a QA training application. Do not enter real payment information.",
+                exact=True,
+            )
+        ).to_be_visible()

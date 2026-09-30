@@ -60,3 +60,9 @@ Feature: Authentication
     When the user opens the Terms & Conditions
     Then the Terms & Conditions page should be displayed
     And the user returns to the login page
+
+  Scenario: AUTH-TERMS-02 Terms page displays QA training warning
+    Given the user is on the login page
+    When the user opens the Terms & Conditions
+    Then the Terms & Conditions page should be displayed
+    And the QA training warning should be displayed

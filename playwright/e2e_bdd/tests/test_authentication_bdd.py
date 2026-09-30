@@ -64,3 +64,6 @@ def user_returns_to_login(shared_data):
     shared_data["login_page"].returnToLoginPage()
 
 
+@then("the QA training warning should be displayed")
+def qa_training_warning_is_displayed(shared_data):
+    shared_data["login_page"].verifyQATrainingWarning()
