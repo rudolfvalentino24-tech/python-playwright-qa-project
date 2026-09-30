@@ -18,6 +18,23 @@ _UNSUPPORTED_WARNING = re.compile(
 
 _STEP_PATTERN = re.compile(r"^(Given|When|Then|And|But)\s+(.+)$", re.IGNORECASE)
 
+# Deterministic product-capability checks for behaviors where a negative test
+# could otherwise pass simply because the whole feature is absent.
+_CAPABILITY_CHECKS = (
+    {
+        "scenario": re.compile(
+            r"(?:reveal|show|toggle)\s+(?:the\s+)?password|password\s+(?:reveal|visibility)\s+(?:icon|button|control|toggle)?",
+            re.IGNORECASE,
+        ),
+        "source": re.compile(
+            r"reveal[-_ ]?password|show[-_ ]?password|toggle[-_ ]?password|password[-_ ]?visibility|"
+            r"password[-_ ]?(?:eye|toggle)|(?:eye|visibility)[-_ ]?icon",
+            re.IGNORECASE,
+        ),
+        "label": "password reveal control",
+    },
+)
+
 
 def _step_body(step):
     match = _STEP_PATTERN.match(str(step or "").strip())
@@ -77,6 +94,35 @@ def _proposal_covers_all_missing_steps(proposal, automation):
     return missing.issubset(generated)
 
 
+def _application_source(bdd_sync):
+    paths = (
+        bdd_sync.PROJECT_ROOT / "qa_testing_playground" / "store.py",
+        bdd_sync.PROJECT_ROOT / "qa_testing_playground" / "qa_playground.py",
+    )
+    chunks = []
+    for path in paths:
+        if not path.exists():
+            continue
+        try:
+            chunks.append(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError):
+            continue
+    return "\n".join(chunks)
+
+
+def _missing_product_capability(bdd_sync, case, automation):
+    scenario_text = "\n".join(
+        [str(getattr(case, "title", "") or "")]
+        + [str(row.get("step", "") or "") for row in automation.get("steps", [])]
+    )
+    source = _application_source(bdd_sync)
+
+    for check in _CAPABILITY_CHECKS:
+        if check["scenario"].search(scenario_text) and not check["source"].search(source):
+            return check["label"]
+    return ""
+
+
 def _block_proposal(proposal, reason):
     proposal.test_code = ""
     proposal.page_object_file = ""
@@ -92,6 +138,18 @@ def apply_ai_automation_guard(ai_automation):
 
     def guarded_generate(bdd_sync, case, automation):
         proposal = original_generate(bdd_sync, case, automation)
+
+        missing_capability = _missing_product_capability(bdd_sync, case, automation)
+        if missing_capability:
+            proposal.warnings = list(getattr(proposal, "warnings", []) or []) + [
+                f"Application source contains no evidence of the required {missing_capability}."
+            ]
+            return _block_proposal(
+                proposal,
+                f"Automation was not generated because the application source contains "
+                f"no evidence of the required {missing_capability}. Implement the product "
+                "feature first, then generate the automation again.",
+            )
 
         if _warns_about_unsupported_behavior(proposal):
             return _block_proposal(
