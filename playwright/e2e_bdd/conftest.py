@@ -41,11 +41,30 @@ def _known_bdd_case_ids():
 KNOWN_BDD_CASE_IDS = _known_bdd_case_ids()
 
 
+def _case_id_from_callspec(node):
+    """Resolve a Scenario Outline case_id from pytest's generated parameters."""
+    callspec = getattr(node, "callspec", None)
+    if not callspec:
+        return None
+
+    for value in callspec.params.values():
+        if isinstance(value, dict):
+            case_id = str(value.get("case_id", "")).strip().upper()
+            if case_id:
+                return case_id
+    return None
+
+
 def _case_id_for_item(item):
+    """Resolve a stable Test Hub case ID while pytest is collecting tests."""
+    case_id = _case_id_from_callspec(item)
+    if case_id:
+        return case_id
+
     normalized_nodeid = _normalize_case_token(item.nodeid)
-    for case_id in KNOWN_BDD_CASE_IDS:
-        if _normalize_case_token(case_id) in normalized_nodeid:
-            return case_id
+    for known_case_id in KNOWN_BDD_CASE_IDS:
+        if _normalize_case_token(known_case_id) in normalized_nodeid:
+            return known_case_id
     return None
 
 
@@ -77,15 +96,40 @@ def pytest_configure(config):
         )
 
 
+def pytest_collection_modifyitems(config, items):
+    """Collect only the BDD cases explicitly requested by Test Hub."""
+    if not TEST_HUB_CASE_IDS:
+        return
+
+    selected = []
+    deselected = []
+
+    for item in items:
+        case_id = _case_id_for_item(item)
+        if case_id in TEST_HUB_CASE_IDS:
+            selected.append(item)
+            _case_id_by_nodeid[item.nodeid] = case_id
+        else:
+            deselected.append(item)
+
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+
+    items[:] = selected
+
+    terminal = config.pluginmanager.get_plugin("terminalreporter")
+    if terminal:
+        selected_ids = ", ".join(sorted(TEST_HUB_CASE_IDS))
+        terminal.write_line(
+            f"[Test Hub] Selected {len(selected)} test(s): {selected_ids}"
+        )
+
+
 def _scenario_case_id(request, scenario):
     """Resolve a stable Test Hub case ID from a pytest-bdd scenario/example."""
-    callspec = getattr(request.node, "callspec", None)
-    if callspec:
-        for value in callspec.params.values():
-            if isinstance(value, dict):
-                case_id = str(value.get("case_id", "")).strip().upper()
-                if case_id:
-                    return case_id
+    case_id = _case_id_from_callspec(request.node)
+    if case_id:
+        return case_id
 
     name = getattr(scenario, "name", "") or ""
     match = re.match(r"^([A-Z0-9]+(?:-[A-Z0-9]+)+)\b", name.strip().upper())
@@ -93,13 +137,15 @@ def _scenario_case_id(request, scenario):
 
 
 def pytest_bdd_before_scenario(request, feature, scenario):
-    """Skip BDD scenarios that were not selected by the Test Hub run."""
+    """Register the Test Hub case ID for the selected BDD scenario."""
     if not TEST_HUB_CASE_IDS:
         return
 
     case_id = _scenario_case_id(request, scenario)
     if case_id not in TEST_HUB_CASE_IDS:
-        pytest.skip("Not selected by Test Hub")
+        pytest.fail(
+            f"Collected BDD case {case_id or '<unknown>'} was not selected by Test Hub."
+        )
 
     _case_id_by_nodeid[request.node.nodeid] = case_id
 
