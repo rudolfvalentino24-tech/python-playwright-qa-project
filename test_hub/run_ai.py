@@ -2,9 +2,11 @@ import os
 
 import app as hub
 from ai_designer import register_ai_designer
+from bdd_sync import register_bdd_sync
 
 
 register_ai_designer(hub)
+register_bdd_sync(hub)
 
 
 if __name__ == "__main__":
