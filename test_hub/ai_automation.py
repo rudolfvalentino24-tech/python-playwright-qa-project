@@ -1,7 +1,6 @@
 import ast
 import os
 import textwrap
-from pathlib import Path
 
 from openai import OpenAI
 from pydantic import BaseModel, Field
@@ -21,10 +20,9 @@ class AutomationProposal(BaseModel):
 
 
 def _case_or_404(hub, case_key):
-    case = hub.db.session.scalar(
+    return hub.db.session.scalar(
         hub.db.select(hub.TestCase).where(hub.TestCase.case_key == case_key)
     )
-    return case
 
 
 def _project_path(bdd_sync, relative_path):
@@ -50,16 +48,37 @@ def _page_object_catalog(bdd_sync):
             continue
 
         classes = [node.name for node in tree.body if isinstance(node, ast.ClassDef)]
-        relative = path.relative_to(bdd_sync.PROJECT_ROOT).as_posix()
         items.append({
-            "path": relative,
+            "path": path.relative_to(bdd_sync.PROJECT_ROOT).as_posix(),
             "classes": classes,
             "content": content[:7000],
         })
     return items
 
 
-def _automation_context(bdd_sync, case, automation):
+def _application_context(bdd_sync):
+    candidates = [
+        bdd_sync.PROJECT_ROOT / "qa_testing_playground" / "store.py",
+        bdd_sync.PROJECT_ROOT / "qa_testing_playground" / "qa_playground.py",
+    ]
+    blocks = []
+    total_chars = 0
+    for path in candidates:
+        if not path.exists():
+            continue
+        try:
+            content = path.read_text(encoding="utf-8")[:18000]
+        except (OSError, UnicodeDecodeError):
+            continue
+        block = f"FILE: {path.relative_to(bdd_sync.PROJECT_ROOT).as_posix()}\n{content}"
+        if total_chars + len(block) > 32000:
+            break
+        blocks.append(block)
+        total_chars += len(block)
+    return "\n\n---\n\n".join(blocks)
+
+
+def _automation_context(bdd_sync, automation):
     runner_path = _project_path(bdd_sync, automation["runner_file"])
     runner_content = runner_path.read_text(encoding="utf-8")
 
@@ -83,14 +102,14 @@ def _automation_context(bdd_sync, case, automation):
         total_chars += len(block)
         page_objects.append(block)
 
-    missing_steps = [row["step"] for row in automation["steps"] if not row["implemented"]]
     return {
         "runner_path": automation["runner_file"],
         "runner_content": runner_content,
         "conftest_content": conftest_content,
         "page_objects": "\n\n---\n\n".join(page_objects),
+        "application_context": _application_context(bdd_sync),
         "allowed_page_objects": [item["path"] for item in catalog],
-        "missing_steps": missing_steps,
+        "missing_steps": [row["step"] for row in automation["steps"] if not row["implemented"]],
     }
 
 
@@ -103,7 +122,7 @@ def _generate_proposal(bdd_sync, case, automation):
     if not (automation["synced"] or automation["existing_reference"]):
         raise RuntimeError("Sync the case to BDD before generating automation code.")
 
-    context = _automation_context(bdd_sync, case, automation)
+    context = _automation_context(bdd_sync, automation)
     if not context["missing_steps"]:
         raise RuntimeError("This case has no missing BDD step implementations.")
 
@@ -124,8 +143,8 @@ Hard rules:
 - page_object_file must be exactly one of the allowed existing files below, or an empty string if no Page Object change is needed.
 - page_object_class must be an existing class in that file, or empty if no Page Object change is needed.
 - page_object_methods must contain method definitions only, without a class wrapper and without imports.
-- Do not modify the application/product code.
-- Do not invent unsupported product behavior. If the requested behavior does not appear to exist in the supplied project context, return a warning and leave unsafe/unjustified code empty.
+- Application source is read-only context. Never propose modifications to product/application files.
+- Do not invent unsupported product behavior, selectors or endpoints. If the requested behavior is not supported by the supplied application source, return a clear warning and leave unjustified code empty.
 - Keep code concise and synchronous Playwright only.
 - Do not include Markdown code fences.
 
@@ -150,6 +169,9 @@ Shared BDD fixtures / reusable steps context:
 
 Existing Page Objects:
 {context['page_objects']}
+
+Application source (read-only evidence of actual supported behavior):
+{context['application_context']}
 """
 
     client = OpenAI(api_key=api_key)
@@ -194,8 +216,7 @@ def _insert_class_methods(current_content, class_name, raw_methods):
 
     lines = current_content.splitlines()
     insert_at = target.end_lineno
-    addition = [""] + methods.splitlines()
-    updated = lines[:insert_at] + addition + lines[insert_at:]
+    updated = lines[:insert_at] + [""] + methods.splitlines() + lines[insert_at:]
     result = "\n".join(updated).rstrip() + "\n"
     ast.parse(result)
     return result
@@ -254,14 +275,12 @@ def _save_reviewed_code(bdd_sync, automation, test_code, page_object_file, page_
         if not page_object_file:
             raise ValueError("Choose an existing Page Object file for the proposed methods.")
         page_object_path = _safe_page_object_path(bdd_sync, page_object_file)
-        page_object_current = page_object_path.read_text(encoding="utf-8")
         page_object_updated = _insert_class_methods(
-            page_object_current,
+            page_object_path.read_text(encoding="utf-8"),
             page_object_class.strip(),
             page_object_methods,
         )
 
-    # Both candidates have passed syntax validation. Only now modify local files.
     runner_path.write_text(runner_updated, encoding="utf-8")
     if page_object_path and page_object_updated is not None:
         page_object_path.write_text(page_object_updated, encoding="utf-8")
@@ -274,7 +293,7 @@ def _patch_automation_template(bdd_sync):
     if "ai_generate_automation" not in template and marker in template:
         template = template.replace(marker, generate_button + "\n" + marker, 1)
 
-    proposal_card = '''\n  {% if proposal %}<div class="card scenario"><h2>✨ AI automation proposal</h2>\n    <div class="muted" style="margin-bottom:12px">Generated with {{ model }}. Review and edit everything before saving. Nothing is committed or pushed automatically.</div>\n    {% if proposal.warnings %}<div class="message" style="background:#fff4dd;color:#8a5d00">{% for warning in proposal.warnings %}<div>⚠ {{ warning }}</div>{% endfor %}</div>{% endif %}\n    <p style="font-size:13px;color:#41526c"><strong>Summary:</strong> {{ proposal.summary }}</p>\n    <form method="post" action="{{ url_for('ai_save_automation', case_key=case.case_key) }}">\n      <label style="display:block;margin:12px 0 6px;font-size:12px;font-weight:800">pytest-bdd additions → {{ automation.runner_file }}</label>\n      <textarea name="test_code" style="width:100%;min-height:260px;padding:12px;border:1px solid #ccd5e4;border-radius:10px;font:12px/1.5 Consolas,monospace">{{ proposal.test_code }}</textarea>\n      <label style="display:block;margin:12px 0 6px;font-size:12px;font-weight:800">Page Object file</label>\n      <input name="page_object_file" value="{{ proposal.page_object_file }}" style="width:100%;height:40px;padding:0 10px;border:1px solid #ccd5e4;border-radius:9px">\n      <label style="display:block;margin:12px 0 6px;font-size:12px;font-weight:800">Page Object class</label>\n      <input name="page_object_class" value="{{ proposal.page_object_class }}" style="width:100%;height:40px;padding:0 10px;border:1px solid #ccd5e4;border-radius:9px">\n      <label style="display:block;margin:12px 0 6px;font-size:12px;font-weight:800">Page Object methods</label>\n      <textarea name="page_object_methods" style="width:100%;min-height:260px;padding:12px;border:1px solid #ccd5e4;border-radius:10px;font:12px/1.5 Consolas,monospace">{{ proposal.page_object_methods }}</textarea>\n      <div class="actions"><button class="primary" type="submit">Save reviewed code locally</button><a class="button" href="{{ url_for('bdd_automation_case', case_key=case.case_key) }}">Discard proposal</a></div>\n    </form>\n  </div>{% endif %}\n'''
+    proposal_card = '''\n  {% if proposal %}<div class="card scenario"><h2>✨ AI automation proposal</h2>\n    <div class="muted" style="margin-bottom:12px">Generated with {{ model }}. Review and edit everything before saving. Nothing is committed or pushed automatically.</div>\n    {% if proposal.warnings %}<div class="message" style="background:#fff4dd;color:#8a5d00">{% for warning in proposal.warnings %}<div>⚠ {{ warning }}</div>{% endfor %}</div>{% endif %}\n    <p style="font-size:13px;color:#41526c"><strong>Summary:</strong> {{ proposal.summary }}</p>\n    <form method="post" action="{{ url_for('ai_save_automation', case_key=case.case_key) }}">\n      <label style="display:block;margin:12px 0 6px;font-size:12px;font-weight:800">pytest-bdd additions → {{ automation.runner_file }}</label>\n      <textarea name="test_code" style="width:100%;min-height:260px;padding:12px;border:1px solid #ccd5e4;border-radius:10px;font:12px/1.5 Consolas,monospace">{{ proposal.test_code }}</textarea>\n      <label style="display:block;margin:12px 0 6px;font-size:12px;font-weight:800">Page Object file</label>\n      <input name="page_object_file" value="{{ proposal.page_object_file }}" style="width:100%;height:40px;padding:0 10px;border:1px solid #ccd5e4;border-radius:9px">\n      <label style="display:block;margin:12px 0 6px;font-size:12px;font-weight:800">Page Object class</label>\n      <input name="page_object_class" value="{{ proposal.page_object_class }}" style="width:100%;height:40px;padding:0 10px;border:1px solid #ccd5e4;border-radius:9px">\n      <label style="display:block;margin:12px 0 6px;font-size:12px;font-weight:800">Page Object methods</label>\n      <textarea name="page_object_methods" style="width:100%;min-height:260px;padding:12px;border:1px solid #ccd5e4;border-radius:10px;font:12px/1.5 Consolas,monospace">{{ proposal.page_object_methods }}</textarea>\n      {% if proposal.test_code %}<div class="actions"><button class="primary" type="submit">Save reviewed code locally</button><a class="button" href="{{ url_for('bdd_automation_case', case_key=case.case_key) }}">Discard proposal</a></div>{% else %}<div class="message" style="background:#fff4dd;color:#8a5d00">No code was proposed. Resolve the warnings or update the product requirement before generating again.</div>{% endif %}\n    </form>\n  </div>{% endif %}\n'''
     closing = "\n</section>\n</main></body></html>"
     if "AI automation proposal" not in template and closing in template:
         template = template.replace(closing, proposal_card + closing, 1)
