@@ -3,7 +3,9 @@ import os
 import app as hub
 import bdd_sync
 import ai_designer
+import ui_redesign
 from ai_designer import register_ai_designer
+from jira_ui_fix import apply_jira_modal_error_fix
 from run_guards import register_run_guards
 from ui_redesign import register_ui_redesign
 
@@ -39,6 +41,7 @@ if "case_automation" not in hub.app.view_functions:
         methods=["GET"],
     )
 
+apply_jira_modal_error_fix(ui_redesign)
 register_ui_redesign(hub, ai_designer, bdd_sync)
 register_run_guards(hub)
 
