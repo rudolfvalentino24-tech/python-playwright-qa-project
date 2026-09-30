@@ -7,6 +7,7 @@ import ui_redesign
 from ai_designer import register_ai_designer
 from jira_ui_fix import apply_jira_modal_error_fix
 from run_guards import register_run_guards
+from ui_cleanup import register_ui_cleanup
 from ui_redesign import register_ui_redesign
 
 
@@ -43,6 +44,7 @@ if "case_automation" not in hub.app.view_functions:
 
 apply_jira_modal_error_fix(ui_redesign)
 register_ui_redesign(hub, ai_designer, bdd_sync)
+register_ui_cleanup(hub)
 register_run_guards(hub)
 
 
