@@ -1,33 +1,10 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
 
-def _load_local_env():
-    """Load test_hub/.env without overriding variables already set by the shell."""
-    env_path = Path(__file__).resolve().with_name(".env")
-    if not env_path.exists():
-        return
-
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip()
-        if not key:
-            continue
-
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-            value = value[1:-1]
-
-        os.environ.setdefault(key, value)
-
-
-# Environment-dependent settings are read while app modules import, so load
-# the local file before importing Test Hub, Jira, Jenkins or OpenAI modules.
-_load_local_env()
+# Load local secrets/configuration before app.py reads environment variables.
+load_dotenv(Path(__file__).with_name(".env"), override=False)
 
 import app as hub
 import bdd_sync
