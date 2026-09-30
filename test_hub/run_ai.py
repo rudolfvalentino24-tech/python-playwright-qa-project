@@ -3,13 +3,16 @@ from functools import lru_cache
 
 import app as hub
 import bdd_sync
+import ai_designer
 from ai_designer import register_ai_designer
+from ui_redesign import register_ui_redesign
 
 
 bdd_sync._scan_step_definitions = lru_cache(maxsize=1)(bdd_sync._scan_step_definitions)
 
 register_ai_designer(hub)
 bdd_sync.register_bdd_sync(hub)
+register_ui_redesign(hub, ai_designer, bdd_sync)
 
 
 if __name__ == "__main__":
