@@ -1,5 +1,4 @@
 import os
-from functools import lru_cache
 
 import app as hub
 import bdd_sync
@@ -9,7 +8,23 @@ from run_guards import register_run_guards
 from ui_redesign import register_ui_redesign
 
 
-bdd_sync._scan_step_definitions = lru_cache(maxsize=1)(bdd_sync._scan_step_definitions)
+_original_step_scan = bdd_sync._scan_step_definitions
+_step_scan_cache = {"stamp": None, "value": None}
+
+
+def _cached_step_definitions():
+    files = sorted(bdd_sync.BDD_DIR.rglob("*.py")) if bdd_sync.BDD_DIR.exists() else []
+    stamp = tuple(
+        (str(path), path.stat().st_mtime_ns, path.stat().st_size)
+        for path in files
+    )
+    if stamp != _step_scan_cache["stamp"]:
+        _step_scan_cache["stamp"] = stamp
+        _step_scan_cache["value"] = _original_step_scan()
+    return _step_scan_cache["value"] or []
+
+
+bdd_sync._scan_step_definitions = _cached_step_definitions
 
 register_ai_designer(hub)
 bdd_sync.register_bdd_sync(hub)
