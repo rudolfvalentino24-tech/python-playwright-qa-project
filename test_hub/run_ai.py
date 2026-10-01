@@ -24,6 +24,7 @@ from results_ui_fix import apply_results_chart_fix
 from run_guards import register_run_guards
 from test_plan_controls import apply_test_plan_controls
 from test_plan_e2e import register_test_plan_e2e
+from test_plan_export import register_test_plan_export
 from test_plan_process import register_test_plan_process
 from test_plan_strategy import register_test_plan_strategy
 import test_plans
@@ -152,6 +153,10 @@ register_test_plan_strategy(hub)
 # Add the End-to-End-specific workspace, coverage metadata, roles, phases,
 # Definition of Done and PDF import while reusing the existing Test Plan model.
 register_test_plan_e2e(hub, test_plan_strategy)
+
+# Add a downloadable PDF export after all Test Plan/E2E models exist so the
+# document can include strategy, coverage, executions, roles, phases and DoD.
+register_test_plan_export(hub)
 
 # Apply the final product design system after every existing page and extension
 # has registered so older template patches cannot overwrite the new shell/modals.
