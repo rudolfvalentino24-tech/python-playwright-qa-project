@@ -10,6 +10,7 @@ import app as hub
 import bdd_sync
 import ai_automation
 import ai_designer
+import test_plan_process
 import ui_redesign
 from ai_automation import register_ai_automation
 from ai_automation_guard import apply_ai_automation_guard
@@ -87,6 +88,58 @@ register_run_guards(hub)
 # Connect Test Plans to Releases, Jira scope, Test Runs, Results, defects and
 # final QA reports after the existing views have finished applying their patches.
 register_test_plan_process(test_plans, hub, ui_redesign)
+
+# The process module adds the tabs/CSS first, then inserts the large process panel
+# block before the existing Test Plan JavaScript. Older code used a collapsed
+# "</main><script>" marker, while the real template contains a newline between
+# those tags. Repair that missing panel insertion explicitly and fail loudly if
+# the expected page boundary ever changes again.
+if '<section class="process-grid">' not in test_plans.TEST_PLAN_PAGE_HTML:
+    script_boundary = "</main>\n<script>"
+    if script_boundary not in test_plans.TEST_PLAN_PAGE_HTML:
+        raise RuntimeError(
+            "Test Plan process UI could not be inserted because the expected "
+            "'</main>\\n<script>' boundary was not found."
+        )
+
+    process_parts = test_plan_process.PROCESS_HTML.split(
+        '<section class="process-grid">',
+        1,
+    )
+    if len(process_parts) != 2:
+        raise RuntimeError(
+            "Test Plan process UI is missing its process-grid section."
+        )
+
+    # Insert Release/Jira scope, run creation, execution rollups, traceability,
+    # QA assessment and the report link directly before the page JavaScript.
+    process_panels = '<section class="process-grid">' + process_parts[1]
+    test_plans.TEST_PLAN_PAGE_HTML = test_plans.TEST_PLAN_PAGE_HTML.replace(
+        script_boundary,
+        process_panels + "\n</main>\n<script>",
+        1,
+    )
+
+# Do not allow the application to start with only the backend routes registered
+# while the visible Test Plan process UI is silently missing again.
+required_test_plan_ui = (
+    'class="process-tabs"',
+    'id="scope"',
+    'id="executions"',
+    'id="traceability"',
+    'id="assessment"',
+    "Open final Test Plan report",
+)
+missing_test_plan_ui = [
+    marker
+    for marker in required_test_plan_ui
+    if marker not in test_plans.TEST_PLAN_PAGE_HTML
+]
+if missing_test_plan_ui:
+    raise RuntimeError(
+        "Test Plan process UI did not initialize correctly. Missing markers: "
+        + ", ".join(missing_test_plan_ui)
+    )
 
 
 if __name__ == "__main__":
