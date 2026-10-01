@@ -20,6 +20,7 @@ from jira_ui_fix import apply_jira_modal_error_fix
 from results_ui_fix import apply_results_chart_fix
 from run_guards import register_run_guards
 from test_plan_controls import apply_test_plan_controls
+from test_plan_process import register_test_plan_process
 import test_plans
 from test_plans import register_test_plans
 from ui_cleanup import register_ui_cleanup
@@ -82,6 +83,10 @@ register_failure_evidence(hub)
 register_ui_redesign(hub, ai_designer, bdd_sync)
 register_ui_cleanup(hub)
 register_run_guards(hub)
+
+# Connect Test Plans to Releases, Jira scope, Test Runs, Results, defects and
+# final QA reports after the existing views have finished applying their patches.
+register_test_plan_process(test_plans, hub, ui_redesign)
 
 
 if __name__ == "__main__":
