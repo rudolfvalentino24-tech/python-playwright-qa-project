@@ -449,6 +449,11 @@ def _register_test_plan_linking(hub):
     if original_update_case is not None:
         @wraps(original_update_case)
         def update_case_with_plans(case_key):
+            # Change Test Plan membership only when the edit page actually rendered
+            # and submitted its Test Plan controls.
+            if hub.request.form.get("test_plan_sync") != "1":
+                return original_update_case(case_key)
+
             plans, error = resolve_plans(hub.request.form.getlist("test_plan_ids"))
             if error:
                 return error
@@ -643,6 +648,7 @@ def register_product_redesign(hub):
         field = (
             '<div class="prd-form-field">'
             '<label>Test Plans</label>'
+            '<input type="hidden" name="test_plan_sync" value="1">'
             f'<div class="prd-plan-checks">{plan_rows}</div>'
             '<div class="prd-plan-hint">Select every Test Plan covered by this Test Case. '
             'Unchecking a plan detaches this case but keeps the planned coverage Pending.</div>'
