@@ -97,7 +97,7 @@ REDESIGN_JS = r"""
   }
 
   function sectionByHeading(text){
-    const h=headingNode(text);return h?h.closest('section,article,.th-card,.panel,.side-card'):null;
+    const h=headingNode(text);return h?h.closest('aside,section,article,.th-card,.panel,.side-card,.card'):null;
   }
 
   function setupGeneralCreateModals(){
