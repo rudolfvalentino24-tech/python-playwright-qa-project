@@ -69,8 +69,27 @@ IMPORT_MODAL = r"""
         <label>PDF document<input type="file" name="document" accept="application/pdf,.pdf" required></label>
         <label>Plan name override<input name="name" placeholder="Leave blank to use the document title"></label>
         <label>Status<select name="status"><option>Draft</option><option>Active</option><option>Completed</option></select></label>
-        <div class="e2e-import-note">Imported objective, coverage, roles, journey, automation strategy, implementation notes and Definition of Done remain editable after import.</div>
+        <div class="e2e-import-note">Imported objective, strategy scope, coverage, roles, journey, automation strategy, implementation notes and Definition of Done remain editable after import.</div>
         <button class="primary" type="submit">Import and review</button>
+      </form>
+    </div>
+  </div>
+</div>
+"""
+
+
+REFRESH_MODAL = r"""
+<div id="prdRefreshTestPlanPdf" class="prd-modal-backdrop">
+  <div class="prd-modal">
+    <div class="prd-modal-head">
+      <div><h2>Refresh Test Plan from PDF</h2><p>Re-read the source document and update fields that the PDF explicitly supports.</p></div>
+      <button class="prd-close" type="button" data-prd-close="prdRefreshTestPlanPdf">×</button>
+    </div>
+    <div class="prd-modal-body">
+      <form method="post" action="{{ url_for('refresh_test_plan_document', plan_id=plan.id) }}" enctype="multipart/form-data" class="e2e-form">
+        <label>PDF document<input type="file" name="document" accept="application/pdf,.pdf" required></label>
+        <div class="e2e-import-note">Refresh updates the objective, supported strategy fields and E2E narrative fields. Entry Criteria and Environment are preserved when the PDF does not define them. Existing Test Cases, coverage links, Jira/Release links, runs, roles and Definition of Done items are not deleted or duplicated.</div>
+        <button class="primary" type="submit">Refresh from PDF</button>
       </form>
     </div>
   </div>
@@ -186,11 +205,104 @@ def _extract_roles(section):
 
 def _extract_bullets(section):
     lines = []
+    current = ""
     for raw in (section or "").splitlines():
-        line = raw.strip().lstrip("•- ").strip()
-        if line and not re.match(r"^\d+\s*$", line):
-            lines.append(line)
+        stripped = raw.strip()
+        if not stripped or stripped == "Store Application - End-to-End Test Plan" or re.match(r"^\d+\s*$", stripped):
+            continue
+        is_bullet = stripped.startswith(("", "•", "-"))
+        clean = stripped.lstrip("•- ").strip()
+        if is_bullet:
+            if current:
+                lines.append(current)
+            current = clean
+        elif current:
+            current = f"{current} {clean}".strip()
+        else:
+            lines.append(clean)
+    if current:
+        lines.append(current)
     return lines
+
+
+def _unique(values):
+    result = []
+    seen = set()
+    for value in values:
+        value = (value or "").strip()
+        key = value.lower()
+        if value and key not in seen:
+            result.append(value)
+            seen.add(key)
+    return result
+
+
+def _objective_from_section(section):
+    """Keep the narrative objective separate from the journey diagram below it."""
+    narrative = []
+    for raw in (section or "").splitlines():
+        line = re.sub(r"\s+", " ", raw.strip())
+        if not line or line in {"↓", "→", "->"}:
+            if narrative:
+                break
+            continue
+        if narrative and len(line) <= 45 and not line.endswith((".", ";", ":")):
+            break
+        narrative.append(line)
+    return " ".join(narrative).strip()
+
+
+def _strategy_fields_from_pdf(sections):
+    """Populate strategy fields only from information supported by the imported PDF."""
+    coverage_text = "\n".join(value for key, value in sections.items() if key.startswith("Coverage Plan"))
+    coverage_rows = _extract_coverage(coverage_text)
+    areas = _unique(row["area"] for row in coverage_rows)
+
+    design_rules = _extract_bullets(sections.get("E2E Design Rules", ""))
+    out_of_scope = [
+        rule for rule in design_rules
+        if any(marker in rule.lower() for marker in (
+            "not selectors", "api calls may be used only", "do not duplicate lower-level",
+        ))
+    ]
+
+    risk_pattern = re.compile(r"\b(invalid|rejected|without|cannot|empty|required|expired|logout|protected)\b", re.I)
+    risk_scenarios = _unique(
+        row["scenario"] for row in coverage_rows if risk_pattern.search(row["scenario"])
+    )
+
+    dod = _extract_bullets(sections.get("Definition of Done for E2E-001", ""))
+    return {
+        "objective": _objective_from_section(sections.get("Objective", "")),
+        "in_scope": "\n".join(areas),
+        "out_of_scope": "\n".join(out_of_scope),
+        "risks": "\n".join(risk_scenarios),
+        # Leave Entry Criteria empty when the source document does not define them.
+        "entry_criteria": "",
+        "exit_criteria": "\n".join(dod),
+        # Environment is intentionally not inferred from URLs or execution modes.
+        "environment": "",
+    }
+
+
+def _profile_fields_from_pdf(text_value, sections):
+    app_section = sections.get("Application Under Test", "")
+    tech_section = sections.get("Technology and Execution Model", "")
+    browser_match = re.search(r"Browser coverage\s+(.+)", app_section, flags=re.I)
+    return {
+        "application_url": _first_url(app_section),
+        "automation_style": _metadata_value(text_value, "Automation style") or tech_section,
+        "execution_model": _metadata_value(text_value, "Execution") or tech_section,
+        "browser_coverage": browser_match.group(1).strip() if browser_match else "",
+        "bdd_structure": sections.get("Proposed E2E BDD Structure", ""),
+        "primary_journey": sections.get("Primary End-to-End Scenario", ""),
+        "test_data_strategy": sections.get("Test Data Strategy", ""),
+        "page_object_strategy": sections.get("Page Object Strategy", ""),
+        "design_rules": sections.get("E2E Design Rules", ""),
+        "jenkins_strategy": sections.get("Jenkins Strategy", ""),
+        "implementation_notes": sections.get("Implementation Phases", ""),
+        "first_target": sections.get("First Implementation Target", ""),
+    }
 
 
 E2E_CREATE_SCRIPT = r"""
@@ -234,6 +346,7 @@ E2E_WORKSPACE = r"""
 <section class="e2e-workspace" data-test-plan-e2e-workspace="1">
   <div class="e2e-workspace-head">
     <div><h2>End-to-End design</h2><p>Plan the complete business journey, data, roles, automation architecture, implementation phases and Definition of Done.</p></div>
+    <div class="e2e-actions"><button type="button" class="secondary" data-prd-open="prdRefreshTestPlanPdf">Refresh from PDF</button></div>
   </div>
   <div class="e2e-tabs">
     <button type="button" class="e2e-tab e2e-active" data-e2e-tab="journey">Journey</button>
@@ -312,7 +425,7 @@ E2E_WORKSPACE = r"""
         <label>E2E design rules<textarea name="design_rules">{{ profile.design_rules }}</textarea></label>
         <label>Jenkins strategy<textarea name="jenkins_strategy">{{ profile.jenkins_strategy }}</textarea></label>
       </div>
-      <button class="secondary">Save automation strategy</button>
+      <button class="secondary" type="submit">Save automation strategy</button>
     </form>
   </div>
 
@@ -444,6 +557,12 @@ def register_test_plan_e2e(hub, test_plan_strategy):
     def touch(plan):
         plan.updated_at = datetime.now(timezone.utc)
 
+    def apply_profile_fields(profile, values, preserve_missing=False):
+        for field, value in values.items():
+            if preserve_missing and not value:
+                continue
+            setattr(profile, field, value)
+
     def render_workspace(plan):
         profile = get_profile(plan.id, create=True)
         hub.db.session.flush()
@@ -456,7 +575,9 @@ def register_test_plan_e2e(hub, test_plan_strategy):
             for meta in hub.db.session.scalars(hub.db.select(TestPlanCoverageMeta).where(TestPlanCoverageMeta.test_plan_item_id.in_(item_ids))).all():
                 metas[meta.test_plan_item_id] = meta
         coverage_rows = [{"item": item, "meta": metas.get(item.id)} for item in plan.items]
-        return hub.render_template_string(E2E_WORKSPACE, plan=plan, profile=profile, roles=roles, phases=phases, dod=dod, coverage_rows=coverage_rows, priorities=E2E_PRIORITIES)
+        workspace = hub.render_template_string(E2E_WORKSPACE, plan=plan, profile=profile, roles=roles, phases=phases, dod=dod, coverage_rows=coverage_rows, priorities=E2E_PRIORITIES)
+        refresh_modal = hub.render_template_string(REFRESH_MODAL, plan=plan)
+        return workspace + refresh_modal
 
     original_list = hub.app.view_functions.get("test_plans")
     if original_list is not None:
@@ -699,36 +820,20 @@ def register_test_plan_e2e(hub, test_plan_strategy):
         if status not in {"Draft", "Active", "Completed"}:
             return "Invalid Test Plan status.", 400
         name = hub.request.form.get("name", "").strip() or _extract_title(text_value, document.filename)
-        objective = sections.get("Objective", "").strip()
+        strategy = _strategy_fields_from_pdf(sections)
         application_name = _metadata_value(text_value, "Application")
         plan = hub.TestPlan(
             name=name[:250], description="Imported from PDF for review.", status=status,
-            plan_type="End-to-End", application=application_name[:120], feature="End-to-End", objective=objective,
-            in_scope="", out_of_scope="", risks="", entry_criteria="", exit_criteria="", environment="",
+            plan_type="End-to-End", application=application_name[:120], feature="End-to-End",
+            objective=strategy["objective"], in_scope=strategy["in_scope"], out_of_scope=strategy["out_of_scope"],
+            risks=strategy["risks"], entry_criteria=strategy["entry_criteria"], exit_criteria=strategy["exit_criteria"],
+            environment=strategy["environment"],
         )
         hub.db.session.add(plan)
         hub.db.session.flush()
 
-        app_section = sections.get("Application Under Test", "")
-        tech_section = sections.get("Technology and Execution Model", "")
-        profile = TestPlanE2EProfile(
-            test_plan_id=plan.id,
-            application_url=_first_url(app_section),
-            automation_style=_metadata_value(text_value, "Automation style") or tech_section,
-            execution_model=_metadata_value(text_value, "Execution") or tech_section,
-            browser_coverage="",
-            bdd_structure=sections.get("Proposed E2E BDD Structure", ""),
-            primary_journey=sections.get("Primary End-to-End Scenario", ""),
-            test_data_strategy=sections.get("Test Data Strategy", ""),
-            page_object_strategy=sections.get("Page Object Strategy", ""),
-            design_rules=sections.get("E2E Design Rules", ""),
-            jenkins_strategy=sections.get("Jenkins Strategy", ""),
-            implementation_notes=sections.get("Implementation Phases", ""),
-            first_target=sections.get("First Implementation Target", ""),
-        )
-        browser_match = re.search(r"Browser coverage\s+(.+)", app_section, flags=re.I)
-        if browser_match:
-            profile.browser_coverage = browser_match.group(1).strip()
+        profile = TestPlanE2EProfile(test_plan_id=plan.id)
+        apply_profile_fields(profile, _profile_fields_from_pdf(text_value, sections))
         hub.db.session.add(profile)
 
         for role in _extract_roles(sections.get("Test Accounts and Roles", "")):
@@ -744,6 +849,38 @@ def register_test_plan_e2e(hub, test_plan_strategy):
         for dod_position, text_item in enumerate(_extract_bullets(sections.get("Definition of Done for E2E-001", "")), start=1):
             hub.db.session.add(TestPlanDefinitionItem(test_plan_id=plan.id, position=dod_position, text=text_item[:500]))
 
+        touch(plan)
+        hub.db.session.commit()
+        return hub.redirect(hub.url_for("test_plan_details", plan_id=plan.id))
+
+    @hub.app.post("/test-plans/<int:plan_id>/e2e/refresh-document")
+    def refresh_test_plan_document(plan_id):
+        plan = plan_or_none(plan_id)
+        if not is_e2e(plan):
+            return "End-to-End Test Plan not found.", 404
+        document = hub.request.files.get("document")
+        if document is None or not (document.filename or "").lower().endswith(".pdf"):
+            return "Upload a PDF Test Plan.", 400
+        try:
+            text_value = _extract_pdf_text(document)
+        except Exception as exc:
+            return f"Unable to read PDF: {exc}", 400
+        sections = _section_map(text_value)
+        if not sections:
+            return "The PDF does not contain recognizable numbered Test Plan sections.", 400
+
+        strategy = _strategy_fields_from_pdf(sections)
+        application_name = _metadata_value(text_value, "Application")
+        if application_name:
+            plan.application = application_name[:120]
+        for field in ("objective", "in_scope", "out_of_scope", "risks", "exit_criteria"):
+            value = strategy.get(field, "").strip()
+            if value:
+                setattr(plan, field, value)
+        # Preserve Entry Criteria and Environment because this source PDF does not define them.
+
+        profile = get_profile(plan.id, create=True)
+        apply_profile_fields(profile, _profile_fields_from_pdf(text_value, sections), preserve_missing=True)
         touch(plan)
         hub.db.session.commit()
         return hub.redirect(hub.url_for("test_plan_details", plan_id=plan.id))
