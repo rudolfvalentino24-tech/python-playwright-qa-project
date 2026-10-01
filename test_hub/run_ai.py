@@ -11,6 +11,7 @@ import bdd_sync
 import ai_automation
 import ai_designer
 import test_plan_process
+import test_plan_strategy
 import ui_redesign
 from ai_automation import register_ai_automation
 from ai_automation_guard import apply_ai_automation_guard
@@ -22,6 +23,7 @@ from product_redesign import register_product_redesign
 from results_ui_fix import apply_results_chart_fix
 from run_guards import register_run_guards
 from test_plan_controls import apply_test_plan_controls
+from test_plan_e2e import register_test_plan_e2e
 from test_plan_process import register_test_plan_process
 from test_plan_strategy import register_test_plan_strategy
 import test_plans
@@ -146,6 +148,10 @@ if missing_test_plan_ui:
 # Upgrade Test Plans with feature strategy fields, creation-time Jira/Release
 # links and an editable QA strategy summary before the final product UI wraps pages.
 register_test_plan_strategy(hub)
+
+# Add the End-to-End-specific workspace, coverage metadata, roles, phases,
+# Definition of Done and PDF import while reusing the existing Test Plan model.
+register_test_plan_e2e(hub, test_plan_strategy)
 
 # Apply the final product design system after every existing page and extension
 # has registered so older template patches cannot overwrite the new shell/modals.
