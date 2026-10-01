@@ -66,6 +66,5 @@ def user_returns_to_login(shared_data):
 
 @then("the QA training warning should be displayed")
 def qa_training_warning_is_displayed(shared_data):
-    # Force a controlled failure so we can verify the new Test Hub
-    # failure reason, screenshot link, and full traceback UI.
-    assert False, "Controlled Test Hub failure evidence verification"
+    # Verify that the QA training warning is displayed on the Terms page
+    shared_data["login_page"].verifyQATrainingWarning()
