@@ -19,6 +19,7 @@ from failure_evidence import register_failure_evidence
 from jira_ui_fix import apply_jira_modal_error_fix
 from results_ui_fix import apply_results_chart_fix
 from run_guards import register_run_guards
+from test_plans import register_test_plans
 from ui_cleanup import register_ui_cleanup
 from ui_redesign import register_ui_redesign
 from workflow_improvements import apply_workflow_improvements
@@ -49,6 +50,10 @@ bdd_sync.register_bdd_sync(hub)
 register_ai_automation(hub, bdd_sync)
 apply_ai_usage_ui(ai_designer, bdd_sync)
 apply_workflow_improvements(hub, ui_redesign, bdd_sync)
+
+# Register Test Plans before the shared Test Hub UI is finalized so the
+# Test Plans tab appears consistently across the existing redesigned pages.
+register_test_plans(hub, ui_redesign)
 
 # Backward-compatible endpoint name used by the redesigned test-case page.
 # Both endpoint names resolve to the same BDD Automation view.
