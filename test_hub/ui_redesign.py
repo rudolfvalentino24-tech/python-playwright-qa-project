@@ -19,6 +19,7 @@ NAV_HTML = r'''
         <a href="{{ url_for('index', status='Draft') }}">Drafts</a>
       </div>
     </details>
+    <a class="th-nav-link" href="{{ url_for('test_plans') }}">☑ <span>Test Plans</span></a>
     <details class="th-menu">
       <summary>▷ <span>Test Runs</span>⌄</summary>
       <div class="th-menu-panel">
