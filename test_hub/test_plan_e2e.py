@@ -425,7 +425,7 @@ E2E_WORKSPACE = r"""
         <label>E2E design rules<textarea name="design_rules">{{ profile.design_rules }}</textarea></label>
         <label>Jenkins strategy<textarea name="jenkins_strategy">{{ profile.jenkins_strategy }}</textarea></label>
       </div>
-      <button class="secondary" type="submit">Save automation strategy</button>
+      <button class="secondary">Save automation strategy</button>
     </form>
   </div>
 
