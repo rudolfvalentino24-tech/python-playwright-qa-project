@@ -4,7 +4,10 @@ from datetime import datetime, timezone
 from functools import wraps
 from html import escape
 
-from pypdf import PdfReader
+try:
+    from pypdf import PdfReader
+except ImportError:  # Keep Test Hub usable until requirements are installed.
+    PdfReader = None
 
 
 E2E_PLAN_TYPES = ("Feature", "Regression", "End-to-End", "Release", "Smoke", "Integration", "Exploratory")
@@ -76,6 +79,8 @@ IMPORT_MODAL = r"""
 
 
 def _extract_pdf_text(file_storage):
+    if PdfReader is None:
+        raise RuntimeError("PDF import requires pypdf. Install test_hub/requirements.txt first.")
     payload = file_storage.read()
     reader = PdfReader(io.BytesIO(payload))
     return "\n".join((page.extract_text() or "") for page in reader.pages)
