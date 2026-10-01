@@ -60,7 +60,11 @@ if "case_automation" not in hub.app.view_functions:
     )
 
 apply_jira_modal_error_fix(ui_redesign)
-apply_results_chart_fix(ui_redesign)
+
+# Apply Results dashboard fixes that need access to both the Flask app/database
+# and the redesigned Results template.
+apply_results_chart_fix(hub, ui_redesign)
+
 register_ui_redesign(hub, ai_designer, bdd_sync)
 register_ui_cleanup(hub)
 register_run_guards(hub)
