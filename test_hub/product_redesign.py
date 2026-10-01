@@ -42,6 +42,7 @@ body.product-redesign .create-card.prd-moved,body.product-redesign #create-run.p
 .prd-page-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 16px}
 .prd-btn{min-height:36px;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0 12px;border:1px solid #d0d5dd;border-radius:8px;background:#fff;color:#344054;text-decoration:none;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
 .prd-btn-primary{background:#2563eb;color:#fff;border-color:#2563eb}.prd-btn-danger{color:#b42318;border-color:#fecdca}
+.prd-kpi-row{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0 0 18px}.prd-kpi{padding:14px 16px;border:1px solid var(--prd-line);border-radius:10px;background:#fff}.prd-kpi small{display:block;color:#667085;font-size:10px;font-weight:750;text-transform:uppercase}.prd-kpi strong{display:block;margin-top:5px;color:#101828;font-size:23px}
 .prd-modal-backdrop{position:fixed;inset:0;z-index:1000;display:none;align-items:center;justify-content:center;padding:22px;background:rgba(16,24,40,.55);backdrop-filter:blur(3px)}
 .prd-modal-backdrop.prd-open{display:flex}.prd-modal{width:min(720px,100%);max-height:88vh;display:flex;flex-direction:column;border-radius:14px;background:#fff;box-shadow:0 24px 80px rgba(16,24,40,.28);overflow:hidden}.prd-modal.prd-lg{width:min(960px,100%)}
 .prd-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:17px 20px;border-bottom:1px solid var(--prd-line)}.prd-modal-head h2{margin:0!important;font-size:17px!important}.prd-modal-head p{margin:4px 0 0;color:#667085;font-size:11px}
@@ -55,7 +56,12 @@ body.product-redesign .create-card.prd-moved,body.product-redesign #create-run.p
 .prd-plan-shell .process-card{margin:0 0 14px!important}.prd-plan-shell #scope,.prd-plan-shell #executions,.prd-plan-shell #traceability,.prd-plan-shell #assessment{width:100%!important}
 .prd-plan-shell #create-plan-run{display:none!important}
 .prd-plan-shell .coverage-panel{width:100%!important}
+.prd-row-menu{position:relative}.prd-row-menu>summary{list-style:none}.prd-row-menu>summary::-webkit-details-marker{display:none}
+.prd-row-menu>div{position:absolute;right:0;top:36px;z-index:90;width:190px;padding:6px;border:1px solid var(--prd-line);border-radius:10px;background:#fff;box-shadow:0 16px 42px rgba(16,24,40,.14)}
+.prd-row-menu button,.prd-row-menu a{width:100%;display:block;padding:8px 9px;border:0;border-radius:7px;background:transparent;color:#344054;text-align:left;text-decoration:none;font:inherit;font-size:11px;cursor:pointer}.prd-row-menu button:hover,.prd-row-menu a:hover{background:#f2f4f7}
+.prd-search{width:100%;height:38px;padding:0 10px;margin-bottom:10px;border:1px solid #d0d5dd;border-radius:8px}
 .prd-modal-body .case-list{max-height:440px!important;overflow:auto!important}.prd-modal-body .process-form{display:grid!important}
+@media(max-width:900px){.prd-kpi-row{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){
   :root{--prd-sidebar:0px}.prd-sidebar{width:238px;transform:translateX(-100%);transition:transform .18s ease}.prd-sidebar.prd-open{transform:translateX(0)}
   .prd-topbar{left:0;padding:0 14px}.prd-mobile{display:block}body.product-redesign{padding-left:0!important}
@@ -77,46 +83,110 @@ REDESIGN_JS = r"""
     const wrap=document.createElement('div');wrap.id=id;wrap.className='prd-modal-backdrop';
     wrap.innerHTML='<div class="prd-modal '+(large?'prd-lg':'')+'"><div class="prd-modal-head"><div><h2>'+title+'</h2><p>'+(subtitle||'')+'</p></div><button class="prd-close" type="button" data-prd-close="'+id+'">×</button></div><div class="prd-modal-body"></div></div>';
     wrap.querySelector('.prd-modal-body').appendChild(node);
-    document.body.appendChild(wrap);return wrap;
+    document.body.appendChild(wrap);
+    return wrap;
   }
+
   function addButton(parent,label,id,primary){
     if(!parent||document.querySelector('[data-prd-open="'+id+'"]'))return;
     const b=document.createElement('button');b.type='button';b.className='prd-btn '+(primary?'prd-btn-primary':'');b.dataset.prdOpen=id;b.textContent=label;parent.appendChild(b);
   }
-  function headingNode(text){return qsa('h1,h2,h3,strong').find(x=>x.textContent.trim().toLowerCase()===text.toLowerCase())}
-  function sectionByHeading(text){const h=headingNode(text);return h?h.closest('section,article,.th-card,.panel,.side-card'):null}
+
+  function headingNode(text){
+    return qsa('h1,h2,h3,strong').find(x=>x.textContent.trim().toLowerCase()===text.toLowerCase());
+  }
+
+  function sectionByHeading(text){
+    const h=headingNode(text);return h?h.closest('section,article,.th-card,.panel,.side-card'):null;
+  }
 
   function setupGeneralCreateModals(){
-    const pageHead=qs('.page-head')||qs('.results-head')||qs('.top')||qs('main');let node=qs('#create-case');
+    const pageHead=qs('.page-head')||qs('.results-head')||qs('.top')||qs('main');
+    let node=qs('#create-case');
     if(node){modalize(node,'prdCreateCase','Create Test Case','Add a new QA test case without leaving the list.',true);addButton(pageHead,'+ New Test Case','prdCreateCase',true)}
     node=qs('#create-plan');
-    if(node){modalize(node,'prdCreatePlan','Create Test Plan','Define the QA scope before execution begins.',false);const oldLink=qs('a[href="#create-plan"]');if(oldLink){oldLink.href='#';oldLink.dataset.prdOpen='prdCreatePlan';oldLink.textContent='+ Create Test Plan'}else addButton(pageHead,'+ Create Test Plan','prdCreatePlan',true)}
-    node=qs('#create-run');
-    if(node){modalize(node,'prdCreateRun','Create Test Run','Choose scope, environment and execution type.',true);const oldLink=qs('a[href="#create-run"]');if(oldLink){oldLink.href='#';oldLink.dataset.prdOpen='prdCreateRun';oldLink.textContent='+ Create Test Run'}else addButton(pageHead,'+ Create Test Run','prdCreateRun',true)}
-    node=qs('#create-release');
-    if(node){modalize(node,'prdCreateRelease','Create Release','Create a delivery milestone for QA evidence.',false);const oldLink=qs('a[href="#create-release"]');if(oldLink){oldLink.href='#';oldLink.dataset.prdOpen='prdCreateRelease';oldLink.textContent='+ Create Release'}else addButton(pageHead,'+ Create Release','prdCreateRelease',true)}
+    if(node){
+      modalize(node,'prdCreatePlan','Create Test Plan','Define the QA scope before execution begins.',false);
+      const oldLink=qs('a[href="#create-plan"]');if(oldLink){oldLink.href='#';oldLink.dataset.prdOpen='prdCreatePlan';oldLink.textContent='+ Create Test Plan'}
+      else addButton(pageHead,'+ Create Test Plan','prdCreatePlan',true);
+    }
+    node=qs('#create-run')||sectionByHeading('Create test run');
+    if(node){
+      modalize(node,'prdCreateRun','Create Test Run','Choose scope, environment and execution type.',true);
+      const oldLink=qs('a[href="#create-run"]');if(oldLink){oldLink.href='#';oldLink.dataset.prdOpen='prdCreateRun';oldLink.textContent='+ Create Test Run'}
+      else addButton(pageHead,'+ Create Test Run','prdCreateRun',true);
+    }
+    node=qs('#create-release')||sectionByHeading('Create release');
+    if(node){
+      modalize(node,'prdCreateRelease','Create Release','Create a delivery milestone for QA evidence.',false);
+      const oldLink=qs('a[href="#create-release"]');if(oldLink){oldLink.href='#';oldLink.dataset.prdOpen='prdCreateRelease';oldLink.textContent='+ Create Release'}
+      else addButton(pageHead,'+ Create Release','prdCreateRelease',true);
+    }
   }
 
   function setupTestPlan(){
     if(!/^\/test-plans\/\d+\/?$/.test(location.pathname))return;
-    const main=qs('main.th-page')||qs('main');if(!main)return;main.classList.add('prd-plan-shell');
-    const top=qs('.top',main)||qs('.page-head',main);const actions=document.createElement('div');actions.className='prd-plan-head-actions';if(top)top.insertAdjacentElement('afterend',actions);
-    const attach=sectionByHeading('Attach existing Test Cases');if(attach){modalize(attach,'prdAttachCases','Attach Test Cases','Search and attach existing Test Cases to this plan.',true);addButton(actions,'Attach Test Cases','prdAttachCases',false)}
-    const add=sectionByHeading('Add planned Test Case');if(add){modalize(add,'prdAddCoverage','Add planned coverage','Define required coverage before the real Test Case exists.',false);addButton(actions,'+ Add coverage','prdAddCoverage',true)}
-    const createRun=qs('#create-plan-run');if(createRun){modalize(createRun,'prdCreatePlanRun','Create Test Run from Plan','Use covered Test Cases and keep the run linked to this plan.',true);addButton(actions,'+ Create Test Run','prdCreatePlanRun',true)}
-    const scope=qs('#scope'),exec=qs('#executions'),trace=qs('#traceability'),assessment=qs('#assessment');let coverage=sectionByHeading('Coverage checklist');if(coverage)coverage.classList.add('coverage-panel');
+    const main=qs('main.th-page')||qs('main');if(!main)return;
+    main.classList.add('prd-plan-shell');
+
+    const top=qs('.top',main)||qs('.page-head',main);
+    const actions=document.createElement('div');actions.className='prd-plan-head-actions';
+    if(top)top.insertAdjacentElement('afterend',actions);
+
+    const attach=sectionByHeading('Attach existing Test Cases');
+    if(attach){modalize(attach,'prdAttachCases','Attach Test Cases','Search and attach existing Test Cases to this plan.',true);addButton(actions,'Attach Test Cases','prdAttachCases',false)}
+    const add=sectionByHeading('Add planned Test Case');
+    if(add){modalize(add,'prdAddCoverage','Add planned coverage','Define required coverage before the real Test Case exists.',false);addButton(actions,'+ Add coverage','prdAddCoverage',true)}
+
+    const createRun=qs('#create-plan-run');
+    if(createRun){modalize(createRun,'prdCreatePlanRun','Create Test Run from Plan','Use covered Test Cases and keep the run linked to this plan.',true);addButton(actions,'+ Create Test Run','prdCreatePlanRun',true)}
+
+    const scope=qs('#scope'),exec=qs('#executions'),trace=qs('#traceability'),assessment=qs('#assessment');
+    let coverage=sectionByHeading('Coverage checklist');
+    if(coverage)coverage.classList.add('coverage-panel');
+
     const oldTabs=qs('.process-tabs');if(oldTabs)oldTabs.remove();
-    const tabs=document.createElement('div');tabs.className='prd-tabs';[['overview','Overview'],['coverage','Coverage'],['executions','Executions'],['traceability','Traceability'],['report','Report']].forEach((d,i)=>{const b=document.createElement('button');b.className='prd-tab '+(i===0?'prd-active':'');b.type='button';b.dataset.prdTab=d[0];b.textContent=d[1];tabs.appendChild(b)});actions.insertAdjacentElement('afterend',tabs);
+    const tabs=document.createElement('div');tabs.className='prd-tabs';
+    const defs=[['overview','Overview'],['coverage','Coverage'],['executions','Executions'],['traceability','Traceability'],['report','Report']];
+    defs.forEach((d,i)=>{const b=document.createElement('button');b.className='prd-tab '+(i===0?'prd-active':'');b.type='button';b.dataset.prdTab=d[0];b.textContent=d[1];tabs.appendChild(b)});
+    actions.insertAdjacentElement('afterend',tabs);
+
     const host=document.createElement('div');host.className='prd-plan-panels';tabs.insertAdjacentElement('afterend',host);
-    function panel(name,node){const p=document.createElement('div');p.className='prd-tab-panel '+(name==='overview'?'prd-active':'');p.dataset.prdPanel=name;if(node)p.appendChild(node);host.appendChild(p)}
+    function panel(name,node){const p=document.createElement('div');p.className='prd-tab-panel '+(name==='overview'?'prd-active':'');p.dataset.prdPanel=name;if(node)p.appendChild(node);host.appendChild(p);return p}
     panel('overview',scope);panel('coverage',coverage);panel('executions',exec);panel('traceability',trace);panel('report',assessment);
-    qsa('.planned-edit').forEach((details,idx)=>{const item=details.closest('.item'),form=qs('form',details);if(!item||!form)return;const id='prdEditCoverage'+idx;details.remove();const wrap=modalize(form,id,'Edit planned coverage','Update the requirement without changing the linked Test Case.',false);if(wrap)addButton(qs('.item-controls',item),'Edit',id,false)});
-    qsa('form.attach-inline').forEach((form,idx)=>{const item=form.closest('.item');if(!item)return;const id='prdLinkCase'+idx,label=(form.textContent||'').includes('Change')?'Change Test Case':'Attach Test Case';modalize(form,id,label,'Choose the Test Case that implements this planned coverage.',true);addButton(qs('.item-controls',item),label,id,false)});
+
+    // Move inline item editing and case-link forms into small pop-ups.
+    qsa('.planned-edit').forEach((details,idx)=>{
+      const item=details.closest('.item');const form=qs('form',details);if(!item||!form)return;
+      const id='prdEditCoverage'+idx;details.remove();const wrap=modalize(form,id,'Edit planned coverage','Update the requirement without changing the linked Test Case.',false);
+      if(wrap){const controls=qs('.item-controls',item);addButton(controls,'Edit',id,false)}
+    });
+    qsa('form.attach-inline').forEach((form,idx)=>{
+      const item=form.closest('.item');if(!item)return;
+      const id='prdLinkCase'+idx;const label=(form.textContent||'').includes('Change')?'Change Test Case':'Attach Test Case';
+      modalize(form,id,label,'Choose the Test Case that implements this planned coverage.',true);
+      const controls=qs('.item-controls',item);addButton(controls,label,id,false)
+    });
   }
 
-  document.addEventListener('click',e=>{const open=e.target.closest('[data-prd-open]');if(open){e.preventDefault();openModal(open.dataset.prdOpen)}const close=e.target.closest('[data-prd-close]');if(close){e.preventDefault();closeModal(close.dataset.prdClose)}if(e.target.classList.contains('prd-modal-backdrop'))e.target.classList.remove('prd-open');const tab=e.target.closest('[data-prd-tab]');if(tab){qsa('.prd-tab').forEach(x=>x.classList.remove('prd-active'));qsa('.prd-tab-panel').forEach(x=>x.classList.remove('prd-active'));tab.classList.add('prd-active');const p=qs('[data-prd-panel="'+tab.dataset.prdTab+'"]');if(p)p.classList.add('prd-active')}});
-  const mobile=qs('#prdMobileToggle'),side=qs('#prdSidebar');if(mobile&&side)mobile.addEventListener('click',()=>side.classList.toggle('prd-open'));
-  setupGeneralCreateModals();setupTestPlan();
+  function setupTabs(){
+    document.addEventListener('click',e=>{
+      const open=e.target.closest('[data-prd-open]');if(open){e.preventDefault();openModal(open.dataset.prdOpen)}
+      const close=e.target.closest('[data-prd-close]');if(close){e.preventDefault();closeModal(close.dataset.prdClose)}
+      if(e.target.classList.contains('prd-modal-backdrop'))e.target.classList.remove('prd-open');
+      const tab=e.target.closest('[data-prd-tab]');if(tab){
+        qsa('.prd-tab').forEach(x=>x.classList.remove('prd-active'));
+        qsa('.prd-tab-panel').forEach(x=>x.classList.remove('prd-active'));
+        tab.classList.add('prd-active');const p=qs('[data-prd-panel="'+tab.dataset.prdTab+'"]');if(p)p.classList.add('prd-active');
+      }
+    });
+  }
+
+  function setupSidebar(){
+    const btn=qs('#prdMobileToggle'),side=qs('#prdSidebar');if(btn&&side)btn.addEventListener('click',()=>side.classList.toggle('prd-open'))
+  }
+
+  setupTabs();setupSidebar();setupGeneralCreateModals();setupTestPlan();
 })();
 """
 
@@ -136,16 +206,23 @@ SIDEBAR_TEMPLATE = r"""
   </nav>
   <div class="prd-side-foot"><div>QA workspace<br><strong style="color:#d0d5dd">Jira · Jenkins · Playwright</strong></div></div>
 </aside>
-<div class="prd-topbar"><div style="display:flex;align-items:center;gap:9px"><button id="prdMobileToggle" class="prd-mobile" type="button">☰</button><strong>Test Hub</strong><span>QA workspace</span></div></div>
+<div class="prd-topbar">
+  <div style="display:flex;align-items:center;gap:9px"><button id="prdMobileToggle" class="prd-mobile" type="button">☰</button><strong>Test Hub</strong><span>QA workspace</span></div>
+</div>
 """
 
 
 def _active_section(path):
-    if path.startswith("/test-plans"): return "plans"
-    if path.startswith("/test-runs"): return "runs"
-    if path.startswith("/results"): return "results"
-    if path.startswith("/releases"): return "releases"
-    if path.startswith("/ai-test") or path.startswith("/ai/"): return "ai"
+    if path.startswith("/test-plans"):
+        return "plans"
+    if path.startswith("/test-runs"):
+        return "runs"
+    if path.startswith("/results"):
+        return "results"
+    if path.startswith("/releases"):
+        return "releases"
+    if path.startswith("/ai-test") or path.startswith("/ai/"):
+        return "ai"
     return "cases"
 
 
@@ -158,14 +235,23 @@ def register_product_redesign(hub):
     def product_redesign_response(response):
         if response.status_code != 200 or "text/html" not in (response.content_type or ""):
             return response
+
         html = response.get_data(as_text=True)
         if "data-product-redesign" in html or "<body" not in html:
             return response
+
         active = _active_section(hub.request.path)
         sidebar = hub.render_template_string(SIDEBAR_TEMPLATE, active=active)
+
         # Keep all existing forms/routes intact; only replace the presentation shell.
         html = html.replace("</head>", "<style data-product-redesign>"+REDESIGN_CSS+"</style></head>", 1)
-        html = re.sub(r"<body([^>]*)>", lambda match: '<body class="product-redesign" data-product-redesign="1"'+match.group(1)+">"+sidebar, html, count=1, flags=re.IGNORECASE)
+        html = re.sub(
+            r"<body[^>]*>",
+            lambda match: '<body class="product-redesign" data-product-redesign="1">'+sidebar,
+            html,
+            count=1,
+            flags=re.IGNORECASE,
+        )
         html = html.replace("</body>", "<script>"+REDESIGN_JS+"</script></body>", 1)
         response.set_data(html)
         return response
