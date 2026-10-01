@@ -220,9 +220,13 @@ def register_test_plan_process(test_plans, hub, ui_redesign):
     # Add section anchors and the process panels to the existing Test Plan page.
     if "process-tabs" not in test_plans.TEST_PLAN_PAGE_HTML:
         test_plans.TEST_PLAN_PAGE_HTML = test_plans.TEST_PLAN_PAGE_HTML.replace("</style>", PROCESS_CSS + "</style>", 1)
-        test_plans.TEST_PLAN_PAGE_HTML = test_plans.TEST_PLAN_PAGE_HTML.replace('<main class="th-page">', '<main class="th-page">\n' + PROCESS_HTML.split('<section class="process-grid">', 1)[0], 1)
+        test_plans.TEST_PLAN_PAGE_HTML = test_plans.TEST_PLAN_PAGE_HTML.replace('<main class="th-page">', '<main class="th-page">\
+' + PROCESS_HTML.split('<section class="process-grid">', 1)[0], 1)
         process_body = '<section class="process-grid">' + PROCESS_HTML.split('<section class="process-grid">', 1)[1]
-        test_plans.TEST_PLAN_PAGE_HTML = test_plans.TEST_PLAN_PAGE_HTML.replace("</main>\n<script>", process_body + "\n</main>\n<script>", 1)
+        test_plans.TEST_PLAN_PAGE_HTML = test_plans.TEST_PLAN_PAGE_HTML.replace("</main>\
+<script>", process_body + "\
+</main>\
+<script>", 1)
         test_plans.TEST_PLAN_PAGE_HTML = test_plans.TEST_PLAN_PAGE_HTML.replace('<div class="top">', '<div id="overview" class="top">', 1)
         test_plans.TEST_PLAN_PAGE_HTML = test_plans.TEST_PLAN_PAGE_HTML.replace('<h2>Coverage checklist</h2>', '<h2 id="coverage">Coverage checklist</h2>', 1)
 
@@ -336,7 +340,7 @@ def register_test_plan_process(test_plans, hub, ui_redesign):
         all_cases = hub.db.session.scalars(hub.db.select(hub.TestCase).order_by(hub.TestCase.feature, hub.TestCase.case_key)).all()
         attached_case_ids = {item.test_case.id for item in plan.items if item.test_case is not None}
         attachable_cases = [case for case in all_cases if case.id not in attached_case_ids]
-        return hub.render_template_string(test_plans.TEST_PLAN_PAGE_HTML, plan=plan, summary=coverage_summary(plan), statuses=["Draft", "Active", "Completed"], attachable_cases=attachable_cases, nav_html=ui_redesign.NAV_HTML, shell_css=ui_redesign.SHELL_CSS, process=process_context(plan), qa_assessments=["Not Assessed", "Ready", "At Risk", "Incomplete"], jira_base=hub.JIRA_BASE_URL.rstrip("/"))
+        return hub.render_template_string(test_plans.TEST_PLAN_PAGE_HTML, plan=plan, summary=coverage_summary(plan), statuses=["Draft", "Active", "Completed"], attachable_cases=attachable_cases, nav_html=test_plans.render_shared_navigation(hub, ui_redesign), shell_css=ui_redesign.SHELL_CSS, process=process_context(plan), qa_assessments=["Not Assessed", "Ready", "At Risk", "Incomplete"], jira_base=hub.JIRA_BASE_URL.rstrip("/"))
 
     hub.app.view_functions["test_plan_details"] = test_plan_details_with_process
 
@@ -525,7 +529,7 @@ def register_test_plan_process(test_plans, hub, ui_redesign):
         if plan is None:
             return "Test Plan not found.", 404
         process = process_context(plan)
-        return hub.render_template_string(REPORT_HTML, plan=plan, coverage=coverage_summary(plan), execution=process["execution"], releases=process["releases"], jira_scope=process["jira_scope"], run_rows=process["run_rows"], traceability=process["traceability"], assessment=process["assessment"], jira_base=hub.JIRA_BASE_URL.rstrip("/"), nav_html=ui_redesign.NAV_HTML, shell_css=ui_redesign.SHELL_CSS, generated_at=datetime.now(timezone.utc))
+        return hub.render_template_string(REPORT_HTML, plan=plan, coverage=coverage_summary(plan), execution=process["execution"], releases=process["releases"], jira_scope=process["jira_scope"], run_rows=process["run_rows"], traceability=process["traceability"], assessment=process["assessment"], jira_base=hub.JIRA_BASE_URL.rstrip("/"), nav_html=test_plans.render_shared_navigation(hub, ui_redesign), shell_css=ui_redesign.SHELL_CSS, generated_at=datetime.now(timezone.utc))
 
     # Add lightweight reverse links so existing Test Case, Test Run, Release and Jira pages
     # can navigate back to the Test Plans that reference them.
