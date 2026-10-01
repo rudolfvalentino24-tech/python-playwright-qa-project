@@ -66,6 +66,5 @@ def user_returns_to_login(shared_data):
 
 @then("the QA training warning should be displayed")
 def qa_training_warning_is_displayed(shared_data):
-    # Force this test to fail temporarily so we can verify that Jenkins
-    # reports a real failed test case back to Test Hub Results.
-    assert False, "Controlled Test Hub failure verification"
+    # Verify that the QA training warning is displayed on the Terms page
+    shared_data["login_page"].verifyQATrainingWarning()
