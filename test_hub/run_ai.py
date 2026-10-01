@@ -23,6 +23,7 @@ from results_ui_fix import apply_results_chart_fix
 from run_guards import register_run_guards
 from test_plan_controls import apply_test_plan_controls
 from test_plan_process import register_test_plan_process
+from test_plan_strategy import register_test_plan_strategy
 import test_plans
 from test_plans import register_test_plans
 from ui_cleanup import register_ui_cleanup
@@ -141,6 +142,10 @@ if missing_test_plan_ui:
         "Test Plan process UI did not initialize correctly. Missing markers: "
         + ", ".join(missing_test_plan_ui)
     )
+
+# Upgrade Test Plans with feature strategy fields, creation-time Jira/Release
+# links and an editable QA strategy summary before the final product UI wraps pages.
+register_test_plan_strategy(hub)
 
 # Apply the final product design system after every existing page and extension
 # has registered so older template patches cannot overwrite the new shell/modals.
