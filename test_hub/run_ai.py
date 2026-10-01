@@ -15,6 +15,7 @@ from ai_automation import register_ai_automation
 from ai_automation_guard import apply_ai_automation_guard
 from ai_designer import register_ai_designer
 from ai_usage import apply_ai_usage_tracking, apply_ai_usage_ui
+from failure_evidence import register_failure_evidence
 from jira_ui_fix import apply_jira_modal_error_fix
 from results_ui_fix import apply_results_chart_fix
 from run_guards import register_run_guards
@@ -64,6 +65,9 @@ apply_jira_modal_error_fix(ui_redesign)
 # Apply Results dashboard fixes that need access to both the Flask app/database
 # and the redesigned Results template.
 apply_results_chart_fix(hub, ui_redesign)
+
+# Add concise failure reasons and direct Jenkins screenshot links to Test Runs.
+register_failure_evidence(hub)
 
 register_ui_redesign(hub, ai_designer, bdd_sync)
 register_ui_cleanup(hub)
