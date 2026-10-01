@@ -1,4 +1,6 @@
 import re
+from datetime import datetime, timezone
+from functools import wraps
 
 
 REDESIGN_CSS = r"""
@@ -36,6 +38,7 @@ body.product-redesign th{background:#f9fafb!important;color:#667085!important;te
 body.product-redesign td{border-color:#f0f2f5!important}
 body.product-redesign .badge,body.product-redesign .state,body.product-redesign .status-pill,body.product-redesign .process-badge{border-radius:999px!important;font-weight:750!important}
 body.product-redesign .page-grid,body.product-redesign .plans-grid{grid-template-columns:1fr!important}
+body.product-redesign .grid.prd-single-column{grid-template-columns:minmax(0,1fr)!important}
 body.product-redesign .side-stack{position:static!important}
 body.product-redesign .ai-card{display:none!important}
 body.product-redesign .create-card.prd-moved,body.product-redesign #create-run.prd-moved,body.product-redesign #create-release.prd-moved{display:block!important}
@@ -61,6 +64,8 @@ body.product-redesign .create-card.prd-moved,body.product-redesign #create-run.p
 .prd-row-menu button,.prd-row-menu a{width:100%;display:block;padding:8px 9px;border:0;border-radius:7px;background:transparent;color:#344054;text-align:left;text-decoration:none;font:inherit;font-size:11px;cursor:pointer}.prd-row-menu button:hover,.prd-row-menu a:hover{background:#f2f4f7}
 .prd-search{width:100%;height:38px;padding:0 10px;margin-bottom:10px;border:1px solid #d0d5dd;border-radius:8px}
 .prd-modal-body .case-list{max-height:440px!important;overflow:auto!important}.prd-modal-body .process-form{display:grid!important}
+.prd-form-field{margin:12px 0}.prd-form-field>label{display:block;margin:0 0 6px;color:#41526c;font-size:12px;font-weight:800}.prd-form-field select{width:100%;height:42px;padding:0 10px}
+.prd-plan-checks{display:grid;gap:7px;padding:9px;border:1px solid #d0d5dd;border-radius:8px;background:#fcfcfd}.prd-plan-check{display:flex!important;align-items:center;gap:8px;margin:0!important;font-weight:650!important}.prd-plan-check input{width:16px!important;height:16px!important;margin:0!important}.prd-plan-hint{margin-top:5px;color:#667085;font-size:10px}
 @media(max-width:900px){.prd-kpi-row{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){
   :root{--prd-sidebar:0px}.prd-sidebar{width:238px;transform:translateX(-100%);transition:transform .18s ease}.prd-sidebar.prd-open{transform:translateX(0)}
@@ -77,13 +82,26 @@ REDESIGN_JS = r"""
   function closeModal(id){const el=document.getElementById(id);if(el)el.classList.remove('prd-open')}
   window.prdOpen=openModal;window.prdClose=closeModal;
 
+  let planOptionsPromise=null;
+  function loadPlanOptions(){
+    if(!planOptionsPromise){
+      planOptionsPromise=fetch('/api/test-plans/options')
+        .then(response=>response.ok?response.json():Promise.reject(new Error('Unable to load Test Plans.')))
+        .then(data=>data.plans||[])
+        .catch(()=>[]);
+    }
+    return planOptionsPromise;
+  }
+
   function modalize(node,id,title,subtitle,large){
     if(!node||node.dataset.prdModalized)return null;
+    const originalParent=node.parentElement;
     node.dataset.prdModalized='1';node.classList.add('prd-moved');
     const wrap=document.createElement('div');wrap.id=id;wrap.className='prd-modal-backdrop';
     wrap.innerHTML='<div class="prd-modal '+(large?'prd-lg':'')+'"><div class="prd-modal-head"><div><h2>'+title+'</h2><p>'+(subtitle||'')+'</p></div><button class="prd-close" type="button" data-prd-close="'+id+'">×</button></div><div class="prd-modal-body"></div></div>';
     wrap.querySelector('.prd-modal-body').appendChild(node);
     document.body.appendChild(wrap);
+    if(originalParent&&originalParent.classList.contains('grid'))originalParent.classList.add('prd-single-column');
     return wrap;
   }
 
@@ -100,27 +118,125 @@ REDESIGN_JS = r"""
     const h=headingNode(text);return h?h.closest('aside,section,article,.th-card,.panel,.side-card,.card'):null;
   }
 
+  function buildSinglePlanField(form,plans,name,labelText,hintText){
+    if(!form||form.querySelector('[name="'+name+'"]'))return null;
+    const wrap=document.createElement('div');wrap.className='prd-form-field';
+    const label=document.createElement('label');label.textContent=labelText||'Test Plan';wrap.appendChild(label);
+    const select=document.createElement('select');select.name=name;
+    select.innerHTML='<option value="">No Test Plan</option>';
+    plans.forEach(plan=>{const option=document.createElement('option');option.value=String(plan.id);option.textContent=plan.name+(plan.status?' · '+plan.status:'');select.appendChild(option)});
+    wrap.appendChild(select);
+    if(hintText){const hint=document.createElement('div');hint.className='prd-plan-hint';hint.textContent=hintText;wrap.appendChild(hint)}
+    return {wrap,select};
+  }
+
+  function buildMultiPlanField(form,plans){
+    if(!form||form.querySelector('[name="test_plan_ids"]'))return null;
+    const wrap=document.createElement('div');wrap.className='prd-form-field';
+    const title=document.createElement('label');title.textContent='Test Plans';wrap.appendChild(title);
+    const box=document.createElement('div');box.className='prd-plan-checks';
+    if(!plans.length){const empty=document.createElement('div');empty.className='prd-plan-hint';empty.textContent='No Test Plans available.';box.appendChild(empty)}
+    plans.forEach(plan=>{
+      const label=document.createElement('label');label.className='prd-plan-check';
+      const input=document.createElement('input');input.type='checkbox';input.name='test_plan_ids';input.value=String(plan.id);
+      const span=document.createElement('span');span.textContent=plan.name+(plan.status?' · '+plan.status:'');
+      label.appendChild(input);label.appendChild(span);box.appendChild(label);
+    });
+    wrap.appendChild(box);
+    const hint=document.createElement('div');hint.className='prd-plan-hint';hint.textContent='Selected Test Plans will be linked to the new Release.';wrap.appendChild(hint);
+    return wrap;
+  }
+
+  function setupRunPlanFilter(form,select,plans){
+    const preset=qs('#runPreset',form)||qs('[name="preset"]',form);
+    const search=qs('#runCaseSearch',form);
+    const options=qsa('.case-option',form);
+
+    function enforce(){
+      const plan=plans.find(item=>String(item.id)===select.value);
+      const allowed=plan?new Set((plan.covered_case_ids||[]).map(String)):null;
+      const query=search?search.value.trim().toLowerCase():'';
+
+      if(plan&&preset){
+        preset.value='Custom';
+        qsa('option',preset).forEach(option=>option.disabled=option.value!=='Custom');
+      }else if(preset){
+        qsa('option',preset).forEach(option=>option.disabled=false);
+      }
+
+      options.forEach(item=>{
+        const checkbox=qs('input[type="checkbox"]',item);if(!checkbox)return;
+        const planAllowed=!allowed||allowed.has(checkbox.value);
+        const searchAllowed=!query||(item.dataset.search||'').includes(query);
+        item.style.display=planAllowed&&searchAllowed?'flex':'none';
+        if(!planAllowed)checkbox.checked=false;
+      });
+    }
+
+    select.addEventListener('change',enforce);
+    if(search)search.addEventListener('input',()=>setTimeout(enforce,0));
+    if(preset)preset.addEventListener('change',()=>setTimeout(enforce,0));
+    enforce();
+  }
+
   function setupGeneralCreateModals(){
     const pageHead=qs('.page-head')||qs('.results-head')||qs('.top')||qs('main');
+
     let node=qs('#create-case');
-    if(node){modalize(node,'prdCreateCase','Create Test Case','Add a new QA test case without leaving the list.',true);addButton(pageHead,'+ New Test Case','prdCreateCase',true)}
+    if(node){
+      modalize(node,'prdCreateCase','Create Test Case','Add a new QA test case without leaving the list.',true);
+      const oldLink=qs('a[href="#create-case"]');
+      if(oldLink){oldLink.href='#';oldLink.dataset.prdOpen='prdCreateCase';oldLink.textContent='+ Create Test Case'}
+      else addButton(pageHead,'+ Create Test Case','prdCreateCase',true);
+      const form=qs('form',node);
+      loadPlanOptions().then(plans=>{
+        const field=buildSinglePlanField(form,plans,'test_plan_id','Test Plan','Optional. The new Test Case becomes Covered in the selected plan.');
+        if(field){
+          const preconditions=qs('textarea[name="preconditions"]',form);
+          const anchor=preconditions?preconditions.closest('.form-field'):null;
+          anchor?form.insertBefore(field.wrap,anchor):form.insertBefore(field.wrap,form.querySelector('button[type="submit"]'));
+        }
+      });
+    }
+
     node=qs('#create-plan');
     if(node){
       modalize(node,'prdCreatePlan','Create Test Plan','Define the QA scope before execution begins.',false);
       const oldLink=qs('a[href="#create-plan"]');if(oldLink){oldLink.href='#';oldLink.dataset.prdOpen='prdCreatePlan';oldLink.textContent='+ Create Test Plan'}
       else addButton(pageHead,'+ Create Test Plan','prdCreatePlan',true);
     }
+
     node=qs('#create-run')||sectionByHeading('Create test run');
     if(node){
       modalize(node,'prdCreateRun','Create Test Run','Choose scope, environment and execution type.',true);
       const oldLink=qs('a[href="#create-run"]');if(oldLink){oldLink.href='#';oldLink.dataset.prdOpen='prdCreateRun';oldLink.textContent='+ Create Test Run'}
       else addButton(pageHead,'+ Create Test Run','prdCreateRun',true);
+      const form=qs('form',node);
+      loadPlanOptions().then(plans=>{
+        const field=buildSinglePlanField(form,plans,'test_plan_id','Test Plan','Optional. Selecting a plan limits the list to its Covered Test Cases.');
+        if(field){
+          const releaseSelect=qs('select[name="release_id"]',form);
+          const releaseLabel=releaseSelect?releaseSelect.previousElementSibling:null;
+          form.insertBefore(field.wrap,releaseLabel||releaseSelect||form.querySelector('button[type="submit"]'));
+          setupRunPlanFilter(form,field.select,plans);
+        }
+      });
     }
+
     node=qs('#create-release')||sectionByHeading('Create release');
     if(node){
       modalize(node,'prdCreateRelease','Create Release','Create a delivery milestone for QA evidence.',false);
       const oldLink=qs('a[href="#create-release"]');if(oldLink){oldLink.href='#';oldLink.dataset.prdOpen='prdCreateRelease';oldLink.textContent='+ Create Release'}
       else addButton(pageHead,'+ Create Release','prdCreateRelease',true);
+      const form=qs('form',node);
+      loadPlanOptions().then(plans=>{
+        const field=buildMultiPlanField(form,plans);
+        if(field){
+          const notes=qs('textarea[name="notes"]',form);
+          const notesLabel=notes?notes.previousElementSibling:null;
+          form.insertBefore(field,notesLabel||notes||form.querySelector('button[type="submit"]'));
+        }
+      });
     }
   }
 
@@ -155,7 +271,6 @@ REDESIGN_JS = r"""
     function panel(name,node){const p=document.createElement('div');p.className='prd-tab-panel '+(name==='overview'?'prd-active':'');p.dataset.prdPanel=name;if(node)p.appendChild(node);host.appendChild(p);return p}
     panel('overview',scope);panel('coverage',coverage);panel('executions',exec);panel('traceability',trace);panel('report',assessment);
 
-    // Move inline item editing and case-link forms into small pop-ups.
     qsa('.planned-edit').forEach((details,idx)=>{
       const item=details.closest('.item');const form=qs('form',details);if(!item||!form)return;
       const id='prdEditCoverage'+idx;details.remove();const wrap=modalize(form,id,'Edit planned coverage','Update the requirement without changing the linked Test Case.',false);
@@ -174,6 +289,10 @@ REDESIGN_JS = r"""
       const open=e.target.closest('[data-prd-open]');if(open){e.preventDefault();openModal(open.dataset.prdOpen)}
       const close=e.target.closest('[data-prd-close]');if(close){e.preventDefault();closeModal(close.dataset.prdClose)}
       if(e.target.classList.contains('prd-modal-backdrop'))e.target.classList.remove('prd-open');
+
+      const clickedMenu=e.target.closest('.more-menu');
+      qsa('.more-menu[open]').forEach(menu=>{if(menu!==clickedMenu)menu.removeAttribute('open')});
+
       const tab=e.target.closest('[data-prd-tab]');if(tab){
         qsa('.prd-tab').forEach(x=>x.classList.remove('prd-active'));
         qsa('.prd-tab-panel').forEach(x=>x.classList.remove('prd-active'));
@@ -226,10 +345,193 @@ def _active_section(path):
     return "cases"
 
 
+def _register_test_plan_linking(hub):
+    """Reuse existing Test Plan relationship models for create workflows."""
+    if getattr(hub.app, "_product_plan_linking_registered", False):
+        return
+
+    @hub.app.get("/api/test-plans/options")
+    def test_plan_options_api():
+        plans = hub.db.session.scalars(
+            hub.db.select(hub.TestPlan).order_by(hub.TestPlan.updated_at.desc(), hub.TestPlan.id.desc())
+        ).all()
+        return hub.jsonify({
+            "plans": [
+                {
+                    "id": plan.id,
+                    "name": plan.name,
+                    "status": plan.status,
+                    "covered_case_ids": [
+                        item.test_case.id
+                        for item in plan.items
+                        if item.test_case is not None
+                    ],
+                }
+                for plan in plans
+            ]
+        })
+
+    def resolve_plan(raw_value):
+        raw_value = (raw_value or "").strip()
+        if not raw_value:
+            return None, None
+        if not raw_value.isdigit():
+            return None, ("Invalid Test Plan.", 400)
+        plan = hub.db.session.get(hub.TestPlan, int(raw_value))
+        if plan is None:
+            return None, ("Test Plan not found.", 404)
+        return plan, None
+
+    def latest_id(model):
+        return hub.db.session.scalar(
+            hub.db.select(model.id).order_by(model.id.desc()).limit(1)
+        ) or 0
+
+    def touch_plan(plan):
+        plan.updated_at = datetime.now(timezone.utc)
+
+    original_create_case = hub.app.view_functions.get("create_case")
+    if original_create_case is not None:
+        @wraps(original_create_case)
+        def create_case_with_plan():
+            plan, error = resolve_plan(hub.request.form.get("test_plan_id"))
+            if error:
+                return error
+
+            before_id = latest_id(hub.TestCase)
+            response = hub.app.make_response(original_create_case())
+            if plan is not None and 300 <= response.status_code < 400:
+                case = hub.db.session.scalar(
+                    hub.db.select(hub.TestCase)
+                    .where(hub.TestCase.id > before_id)
+                    .order_by(hub.TestCase.id.desc())
+                )
+                if case is not None:
+                    exists = hub.db.session.scalar(
+                        hub.db.select(hub.TestPlanItem.id).where(
+                            hub.TestPlanItem.test_plan_id == plan.id,
+                            hub.TestPlanItem.test_case_id == case.id,
+                        )
+                    )
+                    if exists is None:
+                        position = max((item.position for item in plan.items), default=0) + 1
+                        plan.items.append(
+                            hub.TestPlanItem(
+                                test_case=case,
+                                position=position,
+                                title_snapshot=case.title,
+                                feature_snapshot=case.feature_name,
+                            )
+                        )
+                        touch_plan(plan)
+                        hub.db.session.commit()
+            return response
+
+        hub.app.view_functions["create_case"] = create_case_with_plan
+
+    original_create_run = hub.app.view_functions.get("create_test_run")
+    if original_create_run is not None:
+        @wraps(original_create_run)
+        def create_test_run_with_plan():
+            plan, error = resolve_plan(hub.request.form.get("test_plan_id"))
+            if error:
+                return error
+
+            if plan is not None:
+                if hub.request.form.get("preset", "Custom").strip() != "Custom":
+                    return "Test Plan runs use the Custom preset so the selected plan defines the run scope.", 400
+                raw_case_ids = hub.request.form.getlist("case_ids")
+                if not raw_case_ids:
+                    return "Select at least one Covered Test Case from the Test Plan.", 400
+                try:
+                    selected_ids = {int(value) for value in raw_case_ids}
+                except ValueError:
+                    return "Invalid Test Case selection.", 400
+                covered_ids = {
+                    item.test_case.id
+                    for item in plan.items
+                    if item.test_case is not None
+                }
+                if not selected_ids.issubset(covered_ids):
+                    return "A selected Test Case is not Covered by the selected Test Plan.", 400
+
+            before_id = latest_id(hub.TestRun)
+            response = hub.app.make_response(original_create_run())
+            if plan is not None and 300 <= response.status_code < 400:
+                run = hub.db.session.scalar(
+                    hub.db.select(hub.TestRun)
+                    .where(hub.TestRun.id > before_id)
+                    .order_by(hub.TestRun.id.desc())
+                )
+                if run is not None:
+                    exists = hub.db.session.scalar(
+                        hub.db.select(hub.TestPlanRunLink.id).where(
+                            hub.TestPlanRunLink.test_plan_id == plan.id,
+                            hub.TestPlanRunLink.test_run_id == run.id,
+                        )
+                    )
+                    if exists is None:
+                        hub.db.session.add(
+                            hub.TestPlanRunLink(test_plan_id=plan.id, test_run_id=run.id)
+                        )
+                        touch_plan(plan)
+                        hub.db.session.commit()
+            return response
+
+        hub.app.view_functions["create_test_run"] = create_test_run_with_plan
+
+    original_create_release = hub.app.view_functions.get("create_release")
+    if original_create_release is not None:
+        @wraps(original_create_release)
+        def create_release_with_plans():
+            raw_plan_ids = [value.strip() for value in hub.request.form.getlist("test_plan_ids") if value.strip()]
+            plans = []
+            seen = set()
+            for raw_value in raw_plan_ids:
+                plan, error = resolve_plan(raw_value)
+                if error:
+                    return error
+                if plan.id not in seen:
+                    plans.append(plan)
+                    seen.add(plan.id)
+
+            before_id = latest_id(hub.Release)
+            response = hub.app.make_response(original_create_release())
+            if plans and 300 <= response.status_code < 400:
+                release = hub.db.session.scalar(
+                    hub.db.select(hub.Release)
+                    .where(hub.Release.id > before_id)
+                    .order_by(hub.Release.id.desc())
+                )
+                if release is not None:
+                    for plan in plans:
+                        exists = hub.db.session.scalar(
+                            hub.db.select(hub.TestPlanReleaseLink.id).where(
+                                hub.TestPlanReleaseLink.test_plan_id == plan.id,
+                                hub.TestPlanReleaseLink.release_id == release.id,
+                            )
+                        )
+                        if exists is None:
+                            hub.db.session.add(
+                                hub.TestPlanReleaseLink(test_plan_id=plan.id, release_id=release.id)
+                            )
+                            touch_plan(plan)
+                    hub.db.session.commit()
+            return response
+
+        hub.app.view_functions["create_release"] = create_release_with_plans
+
+    hub.app._product_plan_linking_registered = True
+
+
 def register_product_redesign(hub):
     """Apply one product design system to every Test Hub HTML page."""
     if getattr(hub.app, "_product_redesign_registered", False):
         return
+
+    # Test Plan models and relationship tables are already registered before this
+    # final presentation layer is initialized, so create workflows can link to them.
+    _register_test_plan_linking(hub)
 
     @hub.app.after_request
     def product_redesign_response(response):
