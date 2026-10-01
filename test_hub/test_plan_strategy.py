@@ -361,7 +361,8 @@ def register_test_plan_strategy(hub):
                 else:
                     main_marker = '<main class="th-page">'
                     html = html.replace(main_marker, main_marker + _strategy_summary_html(plan, include_edit=True), 1)
-            if "prdEditPlanStrategy" not in html:
+            # Check for the actual modal element, not the button that references it.
+            if 'id="prdEditPlanStrategy"' not in html:
                 modal = hub.render_template_string(EDIT_STRATEGY_MODAL, plan=plan, plan_types=PLAN_TYPES)
                 html = html.replace("</body>", modal + "</body>", 1)
             if "data-test-plan-strategy-css" not in html:
