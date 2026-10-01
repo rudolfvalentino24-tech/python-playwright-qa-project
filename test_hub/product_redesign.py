@@ -1,6 +1,7 @@
 import re
 from datetime import datetime, timezone
 from functools import wraps
+from html import escape
 
 
 REDESIGN_CSS = r"""
@@ -346,7 +347,7 @@ def _active_section(path):
 
 
 def _register_test_plan_linking(hub):
-    """Reuse existing Test Plan relationship models for create workflows."""
+    """Reuse existing Test Plan relationship models for create and edit workflows."""
     if getattr(hub.app, "_product_plan_linking_registered", False):
         return
 
@@ -381,6 +382,21 @@ def _register_test_plan_linking(hub):
         if plan is None:
             return None, ("Test Plan not found.", 404)
         return plan, None
+
+    def resolve_plans(raw_values):
+        plans = []
+        seen = set()
+        for raw_value in raw_values:
+            raw_value = (raw_value or "").strip()
+            if not raw_value:
+                continue
+            plan, error = resolve_plan(raw_value)
+            if error:
+                return [], error
+            if plan.id not in seen:
+                plans.append(plan)
+                seen.add(plan.id)
+        return plans, None
 
     def latest_id(model):
         return hub.db.session.scalar(
@@ -428,6 +444,64 @@ def _register_test_plan_linking(hub):
             return response
 
         hub.app.view_functions["create_case"] = create_case_with_plan
+
+    original_update_case = hub.app.view_functions.get("update_case")
+    if original_update_case is not None:
+        @wraps(original_update_case)
+        def update_case_with_plans(case_key):
+            plans, error = resolve_plans(hub.request.form.getlist("test_plan_ids"))
+            if error:
+                return error
+
+            existing_case = hub.db.session.scalar(
+                hub.db.select(hub.TestCase).where(hub.TestCase.case_key == case_key)
+            )
+            case_id = existing_case.id if existing_case is not None else None
+
+            response = hub.app.make_response(original_update_case(case_key))
+            if case_id is None or not (300 <= response.status_code < 400):
+                return response
+
+            case = hub.db.session.get(hub.TestCase, case_id)
+            if case is None:
+                return response
+
+            selected_plan_ids = {plan.id for plan in plans}
+            linked_items = hub.db.session.scalars(
+                hub.db.select(hub.TestPlanItem).where(
+                    hub.TestPlanItem.test_case_id == case.id
+                )
+            ).all()
+            linked_plan_ids = {item.test_plan_id for item in linked_items}
+
+            # Unchecking a Test Plan detaches the implementation but keeps the
+            # planned coverage requirement, so it returns to Pending.
+            for item in linked_items:
+                if item.test_plan_id not in selected_plan_ids:
+                    plan = hub.db.session.get(hub.TestPlan, item.test_plan_id)
+                    item.test_case = None
+                    if plan is not None:
+                        touch_plan(plan)
+
+            # Checking a new Test Plan adds this Test Case as covered scope.
+            for plan in plans:
+                if plan.id in linked_plan_ids:
+                    continue
+                position = max((item.position for item in plan.items), default=0) + 1
+                plan.items.append(
+                    hub.TestPlanItem(
+                        test_case=case,
+                        position=position,
+                        title_snapshot=case.title,
+                        feature_snapshot=case.feature_name,
+                    )
+                )
+                touch_plan(plan)
+
+            hub.db.session.commit()
+            return response
+
+        hub.app.view_functions["update_case"] = update_case_with_plans
 
     original_create_run = hub.app.view_functions.get("create_test_run")
     if original_create_run is not None:
@@ -484,16 +558,9 @@ def _register_test_plan_linking(hub):
     if original_create_release is not None:
         @wraps(original_create_release)
         def create_release_with_plans():
-            raw_plan_ids = [value.strip() for value in hub.request.form.getlist("test_plan_ids") if value.strip()]
-            plans = []
-            seen = set()
-            for raw_value in raw_plan_ids:
-                plan, error = resolve_plan(raw_value)
-                if error:
-                    return error
-                if plan.id not in seen:
-                    plans.append(plan)
-                    seen.add(plan.id)
+            plans, error = resolve_plans(hub.request.form.getlist("test_plan_ids"))
+            if error:
+                return error
 
             before_id = latest_id(hub.Release)
             response = hub.app.make_response(original_create_release())
@@ -533,6 +600,59 @@ def register_product_redesign(hub):
     # final presentation layer is initialized, so create workflows can link to them.
     _register_test_plan_linking(hub)
 
+    def inject_edit_case_test_plans(html):
+        if hub.request.method != "GET" or hub.request.endpoint != "edit_case":
+            return html
+        case_key = (hub.request.view_args or {}).get("case_key")
+        if not case_key or 'name="test_plan_ids"' in html:
+            return html
+
+        case = hub.db.session.scalar(
+            hub.db.select(hub.TestCase).where(hub.TestCase.case_key == case_key)
+        )
+        if case is None:
+            return html
+
+        plans = hub.db.session.scalars(
+            hub.db.select(hub.TestPlan).order_by(
+                hub.TestPlan.updated_at.desc(), hub.TestPlan.id.desc()
+            )
+        ).all()
+        linked_plan_ids = {
+            value
+            for (value,) in hub.db.session.execute(
+                hub.db.select(hub.TestPlanItem.test_plan_id).where(
+                    hub.TestPlanItem.test_case_id == case.id
+                )
+            ).all()
+        }
+
+        if plans:
+            plan_rows = "".join(
+                '<label class="prd-plan-check">'
+                f'<input type="checkbox" name="test_plan_ids" value="{plan.id}"'
+                + (' checked' if plan.id in linked_plan_ids else '')
+                + '>'
+                f'<span>{escape(plan.name)} · {escape(plan.status)}</span>'
+                '</label>'
+                for plan in plans
+            )
+        else:
+            plan_rows = '<div class="prd-plan-hint">No Test Plans available.</div>'
+
+        field = (
+            '<div class="prd-form-field">'
+            '<label>Test Plans</label>'
+            f'<div class="prd-plan-checks">{plan_rows}</div>'
+            '<div class="prd-plan-hint">Select every Test Plan covered by this Test Case. '
+            'Unchecking a plan detaches this case but keeps the planned coverage Pending.</div>'
+            '</div>'
+        )
+        marker = '<div class="field"><label>Preconditions</label>'
+        if marker not in html:
+            return html
+        return html.replace(marker, field + marker, 1)
+
     @hub.app.after_request
     def product_redesign_response(response):
         if response.status_code != 200 or "text/html" not in (response.content_type or ""):
@@ -541,6 +661,9 @@ def register_product_redesign(hub):
         html = response.get_data(as_text=True)
         if "data-product-redesign" in html or "<body" not in html:
             return response
+
+        # Add Test Plan membership controls to the existing Edit Test Case form.
+        html = inject_edit_case_test_plans(html)
 
         active = _active_section(hub.request.path)
         sidebar = hub.render_template_string(SIDEBAR_TEMPLATE, active=active)
