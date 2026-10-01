@@ -19,6 +19,8 @@ from failure_evidence import register_failure_evidence
 from jira_ui_fix import apply_jira_modal_error_fix
 from results_ui_fix import apply_results_chart_fix
 from run_guards import register_run_guards
+from test_plan_controls import apply_test_plan_controls
+import test_plans
 from test_plans import register_test_plans
 from ui_cleanup import register_ui_cleanup
 from ui_redesign import register_ui_redesign
@@ -54,6 +56,9 @@ apply_workflow_improvements(hub, ui_redesign, bdd_sync)
 # Register Test Plans before the shared Test Hub UI is finalized so the
 # Test Plans tab appears consistently across the existing redesigned pages.
 register_test_plans(hub, ui_redesign)
+
+# Add Test Plan maintenance controls without changing the Test Plan database model.
+apply_test_plan_controls(test_plans, hub)
 
 # Backward-compatible endpoint name used by the redesigned test-case page.
 # Both endpoint names resolve to the same BDD Automation view.
