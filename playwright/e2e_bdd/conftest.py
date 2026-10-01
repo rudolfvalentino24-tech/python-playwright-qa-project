@@ -26,8 +26,10 @@ JENKINS_BUILD_URL = os.getenv("BUILD_URL", "").strip()
 _case_id_by_nodeid = {}
 
 
+# Match pytest-bdd's generated test names by removing separators such as
+# hyphens and underscores from both the case ID and the collected node ID.
 def _normalize_case_token(value):
-    return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
 
 
 def _known_bdd_case_ids():
