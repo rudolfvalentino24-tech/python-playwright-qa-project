@@ -24,6 +24,7 @@ JENKINS_BUILD_NUMBER = os.getenv("BUILD_NUMBER", "").strip()
 JENKINS_BUILD_URL = os.getenv("BUILD_URL", "").strip()
 
 _case_id_by_nodeid = {}
+_failure_details_by_nodeid = {}
 
 
 # Match pytest-bdd's generated test names by removing separators such as
@@ -144,6 +145,69 @@ def _scenario_case_id(request, scenario):
     return match.group(1) if match else None
 
 
+# Keep the failure reason short enough for the Test Run page while preserving
+# the full pytest traceback separately in error_message.
+def _compact_failure_reason(exception, step=None):
+    exception_name = type(exception).__name__
+    message_lines = [line.strip() for line in str(exception).splitlines() if line.strip()]
+    message = message_lines[0] if message_lines else ""
+    reason = f"{exception_name}: {message}" if message else exception_name
+
+    if step is not None:
+        keyword = str(getattr(step, "keyword", "") or "").strip()
+        step_name = str(getattr(step, "name", "") or "").strip()
+        step_label = " ".join(value for value in (keyword, step_name) if value)
+        if step_label:
+            reason = f"Step failed: {step_label} — {reason}"
+
+    return reason[:1200]
+
+
+# Extract a useful final error line when a failure happens outside a BDD step
+# and therefore no pytest-bdd step exception is available.
+def _failure_reason_from_traceback(error_message):
+    lines = [line.strip() for line in str(error_message or "").splitlines() if line.strip()]
+    if not lines:
+        return "Test failed. Open the full traceback for details."
+
+    for line in reversed(lines):
+        candidate = line[2:].strip() if line.startswith("E ") else line
+        if any(token in candidate for token in ("AssertionError", "Error:", "TimeoutError", "FAILED")):
+            return candidate[:1200]
+
+    return lines[-1][:1200]
+
+
+# Capture a stable screenshot path for Test Hub instead of relying only on
+# Playwright's generated artifact filename.
+def _capture_failure_screenshot(request, case_id):
+    if not case_id:
+        return ""
+
+    page = getattr(request.node, "funcargs", {}).get("browserInstance")
+    if page is None and "browserInstance" in getattr(request, "fixturenames", []):
+        try:
+            page = request.getfixturevalue("browserInstance")
+        except Exception:
+            page = None
+
+    if page is None:
+        return ""
+
+    screenshot_dir = Path("test-results") / "test-hub"
+    screenshot_dir.mkdir(parents=True, exist_ok=True)
+    screenshot_path = screenshot_dir / f"{case_id}.png"
+
+    try:
+        # Capture the full page at the exact point where the BDD step failed.
+        page.screenshot(path=str(screenshot_path), full_page=True)
+        print(f"[Test Hub] Failure screenshot: {screenshot_path.as_posix()}")
+        return screenshot_path.as_posix()
+    except Exception as exc:
+        print(f"[Test Hub] Could not capture failure screenshot for {case_id}: {exc}")
+        return ""
+
+
 # Register the selected BDD scenario so its result can be reported back to Test Hub.
 def pytest_bdd_before_scenario(request, feature, scenario):
     if not TEST_HUB_CASE_IDS:
@@ -160,14 +224,49 @@ def pytest_bdd_before_scenario(request, feature, scenario):
     _case_id_by_nodeid[request.node.nodeid] = case_id
 
 
+# Capture the failed BDD step, its concise reason, and a browser screenshot
+# before pytest continues into teardown and closes the Playwright page.
+def pytest_bdd_step_error(
+    request,
+    feature,
+    scenario,
+    step,
+    step_func,
+    step_func_args,
+    exception,
+):
+    if not TEST_HUB_RUN_ID:
+        return
+
+    case_id = _scenario_case_id(request, scenario)
+    if not case_id:
+        return
+
+    screenshot_path = _capture_failure_screenshot(request, case_id)
+    _failure_details_by_nodeid[request.node.nodeid] = {
+        "reason": _compact_failure_reason(exception, step),
+        "screenshot_path": screenshot_path,
+    }
+
+
 def _report_result(report, result):
     case_id = _case_id_by_nodeid.get(report.nodeid)
     if not case_id or not TEST_HUB_RUN_ID:
         return
 
     error_message = ""
+    notes = ""
+
     if result == "Failed":
         error_message = getattr(report, "longreprtext", "") or ""
+        failure_details = _failure_details_by_nodeid.get(report.nodeid, {})
+        notes = failure_details.get("reason") or _failure_reason_from_traceback(error_message)
+
+        # Store the relative Jenkins artifact path alongside the human-readable
+        # reason without adding a new database column.
+        screenshot_path = failure_details.get("screenshot_path", "")
+        if screenshot_path:
+            notes += f"\nScreenshot: {screenshot_path}"
 
     _hub_post(
         f"/api/test-runs/{TEST_HUB_RUN_ID}/results",
@@ -177,6 +276,7 @@ def _report_result(report, result):
             "duration_ms": round(report.duration * 1000),
             "build_number": JENKINS_BUILD_NUMBER,
             "build_url": JENKINS_BUILD_URL,
+            "notes": notes,
             "error_message": error_message[-12000:],
         },
     )
@@ -211,7 +311,21 @@ def pytest_sessionfinish(session, exitstatus):
     missing = TEST_HUB_CASE_IDS - reported_ids
     runner_status = "Completed" if exitstatus in (0, 1) and not missing else "Error"
 
-    message = f"pytest finished with exit code {exitstatus}."
+    # Explain pytest exit codes in QA language instead of showing only a number.
+    exit_messages = {
+        0: "pytest completed successfully",
+        1: "pytest completed with test failures",
+        2: "pytest execution was interrupted",
+        3: "pytest encountered an internal error",
+        4: "pytest could not start because of a usage or configuration error",
+        5: "pytest collected no runnable tests",
+    }
+    message = f"{exit_messages.get(exitstatus, 'pytest finished')} (exit code {exitstatus})."
+
+    failed_count = int(getattr(session, "testsfailed", 0) or 0)
+    if failed_count:
+        message += f" {failed_count} test(s) failed."
+
     if missing:
         message += " Selected case IDs were not reached: " + ", ".join(sorted(missing))
 
