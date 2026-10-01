@@ -18,6 +18,7 @@ from ai_designer import register_ai_designer
 from ai_usage import apply_ai_usage_tracking, apply_ai_usage_ui
 from failure_evidence import register_failure_evidence
 from jira_ui_fix import apply_jira_modal_error_fix
+from product_redesign import register_product_redesign
 from results_ui_fix import apply_results_chart_fix
 from run_guards import register_run_guards
 from test_plan_controls import apply_test_plan_controls
@@ -140,6 +141,10 @@ if missing_test_plan_ui:
         "Test Plan process UI did not initialize correctly. Missing markers: "
         + ", ".join(missing_test_plan_ui)
     )
+
+# Apply the final product design system after every existing page and extension
+# has registered so older template patches cannot overwrite the new shell/modals.
+register_product_redesign(hub)
 
 
 if __name__ == "__main__":
