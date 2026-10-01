@@ -159,8 +159,10 @@ if(planCaseSearch){planCaseSearch.addEventListener('input',()=>{const query=plan
 
 def _patch_test_plans_navigation(ui_redesign):
     # Insert Test Plans between Test Cases and Test Runs in the shared navigation.
-    test_runs_marker = '''    <details class="th-menu">\n      <summary>▷ <span>Test Runs</span>⌄</summary>'''
-    test_plans_link = '''    <a class="th-nav-link" href="{{ url_for('test_plans') }}">☑ <span>Test Plans</span></a>\n'''
+    test_runs_marker = '''    <details class="th-menu">\
+      <summary>▷ <span>Test Runs</span>⌄</summary>'''
+    test_plans_link = '''    <a class="th-nav-link" href="{{ url_for('test_plans') }}">☑ <span>Test Plans</span></a>\
+'''
 
     if test_plans_link not in ui_redesign.NAV_HTML:
         ui_redesign.NAV_HTML = ui_redesign.NAV_HTML.replace(
@@ -178,6 +180,19 @@ def _patch_test_plans_navigation(ui_redesign):
                 name,
                 value.replace(test_runs_marker, test_plans_link + test_runs_marker, 1),
             )
+
+
+def render_shared_navigation(hub, ui_redesign):
+    # Render the shared Test Hub navigation first so its url_for() expressions
+    # become real URLs before the navigation is inserted into Test Plan pages.
+    rendered_navigation = hub.render_template_string(ui_redesign.NAV_HTML)
+
+    # Fail clearly in development if nested Jinja survives rendering instead of
+    # sending broken literal {{ url_for(...) }} links to the browser.
+    if "{{" in rendered_navigation or "}}" in rendered_navigation:
+        raise RuntimeError("Shared Test Hub navigation still contains unresolved Jinja expressions.")
+
+    return rendered_navigation
 
 
 def register_test_plans(hub, ui_redesign):
@@ -282,7 +297,7 @@ def register_test_plans(hub, ui_redesign):
             TEST_PLANS_PAGE_HTML,
             plan_rows=[{"plan": plan, "summary": plan_summary(plan)} for plan in plans],
             statuses=["Draft", "Active", "Completed"],
-            nav_html=ui_redesign.NAV_HTML,
+            nav_html=render_shared_navigation(hub, ui_redesign),
             shell_css=ui_redesign.SHELL_CSS,
         )
 
@@ -324,7 +339,7 @@ def register_test_plans(hub, ui_redesign):
             summary=plan_summary(plan),
             statuses=["Draft", "Active", "Completed"],
             attachable_cases=attachable_cases,
-            nav_html=ui_redesign.NAV_HTML,
+            nav_html=render_shared_navigation(hub, ui_redesign),
             shell_css=ui_redesign.SHELL_CSS,
         )
 
