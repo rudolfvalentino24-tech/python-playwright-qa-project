@@ -1,5 +1,6 @@
 import os
 import re
+from datetime import datetime, timezone
 from typing import Literal
 
 from openai import OpenAI
@@ -51,6 +52,7 @@ main{max-width:920px;margin:0 auto;padding:34px 22px 50px}.card{padding:27px;bor
 <div class="info">Generated cases are drafts. Automated suggestions use Given / When / Then steps and prefer your existing BDD vocabulary where possible.</div>
 <form method="post" action="{{ url_for('ai_generate_test_cases') }}">
   <div class="field"><label>Feature / Module</label><input name="feature" required value="{{ feature or '' }}" placeholder="Password Reset"></div>
+  <div class="field"><label>Test Plan (optional)</label><select name="test_plan_id"><option value="">No Test Plan</option>{% for test_plan in test_plans %}<option value="{{ test_plan.id }}" {% if test_plan_id|string == test_plan.id|string %}selected{% endif %}>{{ test_plan.name }} · {{ test_plan.status }}</option>{% endfor %}</select><div class="hint">Approved cases will become Covered items in this Test Plan.</div></div>
   <div class="field"><label>Feature description / acceptance criteria</label><textarea name="requirement" required placeholder="Users can request a password reset...">{{ requirement or '' }}</textarea><div class="hint">Include business rules, permissions, validations and important edge cases you already know.</div></div>
   <div class="grid">
     <div class="field"><label>Number of suggestions</label><select name="count">{% for value in range(3,13) %}<option value="{{ value }}" {% if value == count %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
@@ -72,15 +74,15 @@ REVIEW_PAGE_HTML = """
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Review AI Test Cases - Test Hub</title>
 <style>
-:root{--surface:rgba(255,255,255,.96);--text:#111827;--muted:#6b7280;--border:#d7dfec;--accent:#2f66e8;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}*{box-sizing:border-box}body{margin:0;min-height:100vh;color:var(--text);background:linear-gradient(180deg,#f8faff,#eef3fb)}header{display:flex;align-items:center;justify-content:space-between;padding:16px 30px;background:rgba(20,42,82,.94);color:#fff}.button{padding:10px 14px;border-radius:10px;background:#eef2f7;color:#20324f;text-decoration:none;font-weight:750}main{max-width:1180px;margin:0 auto;padding:30px 22px 50px}h1{margin:0;color:#172b4d}.subtitle{margin:6px 0 22px;color:var(--muted)}.summary{margin-bottom:18px;padding:15px 17px;border:1px solid #cddcf8;border-radius:13px;background:#edf4ff;color:#294a7a}.case{margin:14px 0;padding:19px;border:1px solid var(--border);border-radius:17px;background:var(--surface);box-shadow:0 12px 34px rgba(35,61,108,.06)}.case-head{display:flex;gap:11px;align-items:flex-start}.case-head>input{width:19px;height:19px;margin-top:12px}.fields{flex:1;min-width:0}.grid{display:grid;grid-template-columns:160px 1fr 140px 140px;gap:10px}.field{margin-top:10px}.field label{display:block;margin-bottom:5px;font-size:11px;font-weight:800;color:#56667b}input,select,textarea,button{font:inherit}input,select,textarea{width:100%;border:1px solid #ccd5e4;border-radius:9px;background:#fff;outline:none}input,select{height:40px;padding:0 10px}textarea{min-height:88px;padding:9px 10px;resize:vertical;line-height:1.4}.warning{margin-top:9px;padding:9px 11px;border-radius:9px;background:#fff4dd;color:#8a5d00;font-size:12px;font-weight:700}.reason{margin-top:9px;color:#607087;font-size:12px}.actions{position:sticky;bottom:12px;display:flex;justify-content:flex-end;gap:8px;margin-top:20px;padding:13px;border:1px solid var(--border);border-radius:14px;background:rgba(255,255,255,.94);box-shadow:0 12px 35px rgba(35,61,108,.12);backdrop-filter:blur(10px)}.primary{border:0;border-radius:10px;padding:11px 16px;background:linear-gradient(90deg,#2f66e8,#2475ff);color:#fff;font-weight:800;cursor:pointer}.secondary{border:0;border-radius:10px;padding:11px 16px;background:#eef2f7;color:#20324f;text-decoration:none;font-weight:750}@media(max-width:850px){.grid{grid-template-columns:1fr 1fr}}@media(max-width:560px){header{padding:13px 16px}main{padding:20px 12px}.grid{grid-template-columns:1fr}}
+:root{--surface:rgba(255,255,255,.96);--text:#111827;--muted:#6b7280;--border:#d7dfec;--accent:#2f66e8;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}*{box-sizing:border-box}body{margin:0;min-height:100vh;color:var(--text);background:linear-gradient(180deg,#f8faff,#eef3fb)}header{display:flex;align-items:center;justify-content:space-between;padding:16px 30px;background:rgba(20,42,82,.94);color:#fff}.button{padding:10px 14px;border-radius:10px;background:#eef2f7;color:#20324f;text-decoration:none;font-weight:750}main{max-width:1180px;margin:0 auto;padding:30px 22px 50px}h1{margin:0;color:#172b4d}.subtitle{margin:6px 0 22px;color:var(--muted)}.summary{margin-bottom:18px;padding:15px 17px;border:1px solid #cddcf8;border-radius:13px;background:#edf4ff;color:#294a7a}.case{margin:14px 0;padding:19px;border:1px solid var(--border);border-radius:17px;background:var(--surface);box-shadow:0 12px 34px rgba(35,61,108,.06)}.case-head{display:flex;gap:11px;align-items:flex-start}.case-head>input{width:19px;height:19px;margin-top:12px}.fields{flex:1;min-width:0}.grid{display:grid;grid-template-columns:160px 1fr 140px 140px;gap:10px}.field{margin-top:10px}.field label{display:block;margin-bottom:5px;font-size:11px;font-weight:800;color:#56667b}input,select,textarea,button{font:inherit}input,select,textarea{width:100%;border:1px solid #ccd5e4;border-radius:9px;background:#fff;outline:none}input,select{height:40px;padding:0 10px}textarea{min-height:88px;padding:9px 10px;resize:vertical;line-height:1.4}.tag-options{display:flex;gap:8px;flex-wrap:wrap}.tag-option{display:flex!important;align-items:center;gap:7px;margin:0!important;padding:8px 10px;border:1px solid #d7dfec;border-radius:9px;background:#fff;color:#41526c;font-size:12px;font-weight:750}.tag-option input{width:16px!important;height:16px!important;margin:0!important}.warning{margin-top:9px;padding:9px 11px;border-radius:9px;background:#fff4dd;color:#8a5d00;font-size:12px;font-weight:700}.reason{margin-top:9px;color:#607087;font-size:12px}.actions{position:sticky;bottom:12px;display:flex;justify-content:flex-end;gap:8px;margin-top:20px;padding:13px;border:1px solid var(--border);border-radius:14px;background:rgba(255,255,255,.94);box-shadow:0 12px 35px rgba(35,61,108,.12);backdrop-filter:blur(10px)}.primary{border:0;border-radius:10px;padding:11px 16px;background:linear-gradient(90deg,#2f66e8,#2475ff);color:#fff;font-weight:800;cursor:pointer}.secondary{border:0;border-radius:10px;padding:11px 16px;background:#eef2f7;color:#20324f;text-decoration:none;font-weight:750}@media(max-width:850px){.grid{grid-template-columns:1fr 1fr}}@media(max-width:560px){header{padding:13px 16px}main{padding:20px 12px}.grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <header><strong>✨ AI Test Designer · Review</strong><a class="button" href="{{ url_for('ai_test_designer') }}">Start over</a></header>
 <main><h1>Review generated test cases</h1><div class="subtitle">Edit anything you want, uncheck cases you do not want, then create only the selected drafts.</div>
-<div class="summary"><strong>{{ feature }}</strong> — {{ plan.feature_summary }}<br>{{ suggestions|length }} suggestions generated with {{ model }}.</div>
+<div class="summary"><strong>{{ feature }}</strong> — {{ plan.feature_summary }}<br>{{ suggestions|length }} suggestions generated with {{ model }}.{% if selected_test_plan %}<br><strong>Test Plan:</strong> {{ selected_test_plan.name }}{% endif %}</div>
 <form method="post" action="{{ url_for('ai_create_selected_cases') }}">
-<input type="hidden" name="feature" value="{{ feature }}"><input type="hidden" name="jira_keys" value="{{ jira_keys }}"><input type="hidden" name="suggestion_count" value="{{ suggestions|length }}">
+<input type="hidden" name="feature" value="{{ feature }}"><input type="hidden" name="jira_keys" value="{{ jira_keys }}"><input type="hidden" name="test_plan_id" value="{{ test_plan_id or '' }}"><input type="hidden" name="suggestion_count" value="{{ suggestions|length }}">
 {% for item in suggestions %}
 <section class="case"><div class="case-head"><input type="checkbox" name="selected" value="{{ loop.index0 }}" {% if not item.duplicate_reason %}checked{% endif %}><div class="fields">
 <div class="grid">
@@ -89,7 +91,7 @@ REVIEW_PAGE_HTML = """
 <div class="field"><label>Priority</label><select name="priority_{{ loop.index0 }}">{% for p in priorities %}<option {% if p == item.case.priority %}selected{% endif %}>{{ p }}</option>{% endfor %}</select></div>
 <div class="field"><label>Type</label><select name="type_{{ loop.index0 }}"><option {% if item.case.type == 'Automated' %}selected{% endif %}>Automated</option><option {% if item.case.type == 'Manual' %}selected{% endif %}>Manual</option></select></div>
 </div>
-<div class="field"><label>Suite tags</label><input name="suite_tags_{{ loop.index0 }}" value="{{ item.case.suite_tags|join(', ') }}" placeholder="smoke, regression, release"></div>
+<div class="field"><label>Suite tags</label><div class="tag-options">{% for tag in ['smoke','regression','release'] %}<label class="tag-option"><input type="checkbox" name="suite_tags_{{ loop.index0 }}" value="{{ tag }}" {% if tag in item.case.suite_tags %}checked{% endif %}>{{ tag|capitalize }}</label>{% endfor %}</div></div>
 <div class="field"><label>Preconditions</label><textarea name="preconditions_{{ loop.index0 }}">{{ item.case.preconditions }}</textarea></div>
 <div class="field"><label>Steps — one per line</label><textarea name="steps_{{ loop.index0 }}">{{ item.case.steps|join('\n') }}</textarea></div>
 <div class="field"><label>Expected result</label><textarea name="expected_result_{{ loop.index0 }}">{{ item.case.expected_result }}</textarea></div>
@@ -195,13 +197,37 @@ def _duplicate_reason(hub, feature, case):
     return ""
 
 
+def _available_test_plans(hub):
+    model = getattr(hub, "TestPlan", None)
+    if model is None:
+        return []
+    return hub.db.session.scalars(
+        hub.db.select(model).order_by(model.updated_at.desc(), model.id.desc())
+    ).all()
+
+
+def _resolve_test_plan(hub, raw_value):
+    raw_value = (raw_value or "").strip()
+    if not raw_value:
+        return None
+    if not raw_value.isdigit():
+        raise ValueError("Invalid Test Plan.")
+    model = getattr(hub, "TestPlan", None)
+    if model is None:
+        raise ValueError("Test Plans are not available.")
+    plan = hub.db.session.get(model, int(raw_value))
+    if plan is None:
+        raise ValueError("Test Plan not found.")
+    return plan
+
+
 def register_ai_designer(hub):
     app = hub.app
     if "ai_test_designer" in app.view_functions:
         return
 
     marker = '    <aside class="card">\n      <h2>Create test case</h2>'
-    replacement = '''    <aside class="card">\n      <div style="margin-bottom:18px;padding:15px;border:1px solid #cddcf8;border-radius:13px;background:linear-gradient(135deg,#edf4ff,#f8fbff)">\n        <strong style="display:block;margin-bottom:5px;color:#17325d">✨ AI Test Designer</strong>\n        <div class="hint" style="margin:0 0 10px">Turn a feature or acceptance criteria into reviewable test-case drafts.</div>\n        <a class="primary button-link" href="{{ url_for('ai_test_designer') }}">Generate with AI</a>\n      </div>\n      <h2>Create test case</h2>'''
+    replacement = """    <aside class="card">\n      <div style="margin-bottom:18px;padding:15px;border:1px solid #cddcf8;border-radius:13px;background:linear-gradient(135deg,#edf4ff,#f8fbff)">\n        <strong style="display:block;margin-bottom:5px;color:#17325d">✨ AI Test Designer</strong>\n        <div class="hint" style="margin:0 0 10px">Turn a feature or acceptance criteria into reviewable test-case drafts.</div>\n        <a class="primary button-link" href="{{ url_for('ai_test_designer') }}">Generate with AI</a>\n      </div>\n      <h2>Create test case</h2>"""
     if marker in hub.PAGE_HTML:
         hub.PAGE_HTML = hub.PAGE_HTML.replace(marker, replacement, 1)
 
@@ -213,6 +239,8 @@ def register_ai_designer(hub):
             feature="",
             requirement="",
             jira_keys="",
+            test_plan_id="",
+            test_plans=_available_test_plans(hub),
             count=6,
             preference="Automated",
         )
@@ -222,6 +250,7 @@ def register_ai_designer(hub):
         feature = hub.request.form.get("feature", "").strip()
         requirement = hub.request.form.get("requirement", "").strip()
         jira_keys = hub.request.form.get("jira_keys", "").strip()
+        test_plan_id = hub.request.form.get("test_plan_id", "").strip()
         preference = hub.request.form.get("preference", "Automated").strip()
 
         try:
@@ -232,6 +261,21 @@ def register_ai_designer(hub):
         if preference not in {"Automated", "Manual", "Mixed"}:
             preference = "Automated"
 
+        try:
+            selected_test_plan = _resolve_test_plan(hub, test_plan_id)
+        except ValueError as exc:
+            return hub.render_template_string(
+                DESIGNER_PAGE_HTML,
+                error=str(exc),
+                feature=feature,
+                requirement=requirement,
+                jira_keys=jira_keys,
+                test_plan_id=test_plan_id,
+                test_plans=_available_test_plans(hub),
+                count=count,
+                preference=preference,
+            ), 400
+
         if not feature or len(requirement) < 20:
             return hub.render_template_string(
                 DESIGNER_PAGE_HTML,
@@ -239,6 +283,8 @@ def register_ai_designer(hub):
                 feature=feature,
                 requirement=requirement,
                 jira_keys=jira_keys,
+                test_plan_id=test_plan_id,
+                test_plans=_available_test_plans(hub),
                 count=count,
                 preference=preference,
             ), 400
@@ -256,6 +302,8 @@ def register_ai_designer(hub):
                 feature=feature,
                 requirement=requirement,
                 jira_keys=jira_keys,
+                test_plan_id=test_plan_id,
+                test_plans=_available_test_plans(hub),
                 count=count,
                 preference=preference,
             ), 400
@@ -268,6 +316,8 @@ def register_ai_designer(hub):
             REVIEW_PAGE_HTML,
             feature=feature,
             jira_keys=jira_keys,
+            test_plan_id=test_plan_id,
+            selected_test_plan=selected_test_plan,
             plan=plan,
             suggestions=suggestions,
             priorities=["Low", "Medium", "High", "Critical"],
@@ -283,6 +333,9 @@ def register_ai_designer(hub):
 
         try:
             jira_keys = hub.parse_jira_keys(hub.request.form.get("jira_keys", ""))
+            selected_test_plan = _resolve_test_plan(
+                hub, hub.request.form.get("test_plan_id", "")
+            )
         except ValueError as exc:
             return str(exc), 400
 
@@ -303,10 +356,9 @@ def register_ai_designer(hub):
             preconditions = hub.request.form.get(f"preconditions_{index}", "").strip()
             steps = hub.normalize_lines(hub.request.form.get(f"steps_{index}", ""))
             expected_result = hub.request.form.get(f"expected_result_{index}", "").strip()
-            raw_tags = hub.request.form.get(f"suite_tags_{index}", "")
             tags = {
                 tag.strip().lower()
-                for tag in re.split(r"[,;\s]+", raw_tags)
+                for tag in hub.request.form.getlist(f"suite_tags_{index}")
                 if tag.strip()
             }
 
@@ -349,6 +401,7 @@ def register_ai_designer(hub):
         if errors:
             return "\n".join(errors), 400
 
+        created_cases = []
         for item in prepared:
             case = hub.TestCase(
                 case_key=item["case_key"],
@@ -367,6 +420,25 @@ def register_ai_designer(hub):
             ]
             hub.set_jira_links(case, jira_keys)
             hub.db.session.add(case)
+            created_cases.append(case)
+
+        if selected_test_plan is not None:
+            position = max(
+                (item.position for item in selected_test_plan.items),
+                default=0,
+            ) + 1
+            for case in created_cases:
+                # AI-created cases immediately satisfy coverage in the selected Test Plan.
+                selected_test_plan.items.append(
+                    hub.TestPlanItem(
+                        test_case=case,
+                        position=position,
+                        title_snapshot=case.title,
+                        feature_snapshot=case.feature_name,
+                    )
+                )
+                position += 1
+            selected_test_plan.updated_at = datetime.now(timezone.utc)
 
         hub.db.session.commit()
         sync_errors = hub.sync_jira_test_hub_web_links(jira_keys)
