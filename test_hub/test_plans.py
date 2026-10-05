@@ -159,9 +159,9 @@ if(planCaseSearch){planCaseSearch.addEventListener('input',()=>{const query=plan
 
 def _patch_test_plans_navigation(ui_redesign):
     # Insert Test Plans between Test Cases and Test Runs in the shared navigation.
-    test_runs_marker = '''    <details class="th-menu">\\
+    test_runs_marker = '''    <details class="th-menu">\
       <summary>▷ <span>Test Runs</span>⌄</summary>'''
-    test_plans_link = '''    <a class="th-nav-link" href="{{ url_for('test_plans') }}">☑ <span>Test Plans</span></a>\\
+    test_plans_link = '''    <a class="th-nav-link" href="{{ url_for('test_plans') }}">☑ <span>Test Plans</span></a>\
 '''
 
     if test_plans_link not in ui_redesign.NAV_HTML:
