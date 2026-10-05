@@ -144,7 +144,11 @@ Hard rules:
 - page_object_class must be an existing class in that file, or empty if no Page Object change is needed.
 - page_object_methods must contain method definitions only, without a class wrapper and without imports.
 - Application source is read-only context. Never propose modifications to product/application files.
-- Do not invent unsupported product behavior, selectors or endpoints. If the requested behavior is not supported by the supplied application source, return a clear warning and leave unjustified code empty.
+- Prefer application source as the strongest evidence for product behavior and selectors.
+- If the requested behavior is not yet present in the supplied application source, you may still generate automation from the explicit Test Case and BDD scenario contract.
+- When generating automation for behavior that is not yet implemented, add a clear warning that the automation is test-first and is expected to fail until development is complete.
+- Do not invent arbitrary selectors. For not-yet-implemented behavior, prefer selectors justified by explicit accessible roles, labels, names, IDs or test IDs stated by the scenario, Test Case, or existing project conventions.
+- If no defensible selector can be derived from either application source or the explicit test contract, leave only that unsupported interaction unimplemented and explain why in warnings.
 - Keep code concise and synchronous Playwright only.
 - Do not include Markdown code fences.
 
