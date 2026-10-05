@@ -528,6 +528,7 @@ def password_should_be_visible(shared_data):
     shared_data["login_page"].verifyPasswordVisible()
 
 
+@given("the user clicks the password visibility toggle")
 @when("the user clicks the password visibility toggle")
 def user_clicks_password_visibility_toggle(shared_data):
     shared_data["login_page"].clickPasswordVisibilityToggle()
