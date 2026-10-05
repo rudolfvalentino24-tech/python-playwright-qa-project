@@ -65,6 +65,8 @@ body.product-redesign .create-card.prd-moved,body.product-redesign #create-run.p
 .prd-row-menu button,.prd-row-menu a{width:100%;display:block;padding:8px 9px;border:0;border-radius:7px;background:transparent;color:#344054;text-align:left;text-decoration:none;font:inherit;font-size:11px;cursor:pointer}.prd-row-menu button:hover,.prd-row-menu a:hover{background:#f2f4f7}
 .prd-search{width:100%;height:38px;padding:0 10px;margin-bottom:10px;border:1px solid #d0d5dd;border-radius:8px}
 .prd-modal-body .case-list{max-height:440px!important;overflow:auto!important}.prd-modal-body .process-form{display:grid!important}
+.prd-modal-body .attach-inline{display:block!important}.prd-modal-body .attach-inline select{width:100%!important;max-width:none!important;height:42px!important;margin-bottom:10px}.prd-modal-body .attach-inline .secondary{width:100%}
+body.product-redesign #createJiraModal,body.product-redesign #editJiraModal{z-index:1200!important}
 .prd-form-field{margin:12px 0}.prd-form-field>label{display:block;margin:0 0 6px;color:#41526c;font-size:12px;font-weight:800}.prd-form-field select{width:100%;height:42px;padding:0 10px}
 .prd-plan-checks{display:grid;gap:7px;padding:9px;border:1px solid #d0d5dd;border-radius:8px;background:#fcfcfd}.prd-plan-check{display:flex!important;align-items:center;gap:8px;margin:0!important;font-weight:650!important}.prd-plan-check input{width:16px!important;height:16px!important;margin:0!important}.prd-plan-hint{margin-top:5px;color:#667085;font-size:10px}
 @media(max-width:900px){.prd-kpi-row{grid-template-columns:repeat(2,1fr)}}
@@ -117,6 +119,28 @@ REDESIGN_JS = r"""
 
   function sectionByHeading(text){
     const h=headingNode(text);return h?h.closest('aside,section,article,.th-card,.panel,.side-card,.card'):null;
+  }
+
+  function setupAttachCaseSearch(form){
+    const select=qs('select[name="case_id"]',form);if(!select)return;
+    const choices=qsa('option',select)
+      .filter(option=>option.value)
+      .map(option=>({value:option.value,text:option.textContent}));
+    const search=document.createElement('input');
+    search.type='search';search.className='prd-search';search.placeholder='Search Test Case ID or title…';
+    select.insertAdjacentElement('beforebegin',search);
+
+    function filterCases(){
+      const query=search.value.trim().toLowerCase();const selected=select.value;
+      select.innerHTML='<option value="">Attach Test Case…</option>';
+      choices
+        .filter(choice=>!query||choice.text.toLowerCase().includes(query))
+        .forEach(choice=>{
+          const option=document.createElement('option');option.value=choice.value;option.textContent=choice.text;option.selected=choice.value===selected;select.appendChild(option)
+        });
+    }
+
+    search.addEventListener('input',filterCases);
   }
 
   function buildSinglePlanField(form,plans,name,labelText,hintText){
@@ -280,7 +304,8 @@ REDESIGN_JS = r"""
     qsa('form.attach-inline').forEach((form,idx)=>{
       const item=form.closest('.item');if(!item)return;
       const id='prdLinkCase'+idx;const label=(form.textContent||'').includes('Change')?'Change Test Case':'Attach Test Case';
-      modalize(form,id,label,'Choose the Test Case that implements this planned coverage.',true);
+      const wrap=modalize(form,id,label,'Choose the Test Case that implements this planned coverage.',true);
+      if(wrap)setupAttachCaseSearch(form);
       const controls=qs('.item-controls',item);addButton(controls,label,id,false)
     });
   }
