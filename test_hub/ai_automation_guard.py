@@ -17,6 +17,7 @@ _UNSUPPORTED_WARNING = re.compile(
 )
 
 _STEP_PATTERN = re.compile(r"^(Given|When|Then|And|But)\s+(.+)$", re.IGNORECASE)
+_TEMPLATE_FIELD = re.compile(r"\{[^{}]+\}")
 
 # Deterministic product-capability checks for behaviors where a negative test
 # could otherwise pass simply because the whole feature is absent.
@@ -73,6 +74,23 @@ def _decorated_step_texts(test_code):
     return found
 
 
+def _step_definition_matches(definition, concrete_step):
+    # Allow one parsers.parse template to cover every concrete value used by a scenario.
+    definition = " ".join(str(definition or "").strip().lower().split())
+    concrete_step = " ".join(str(concrete_step or "").strip().lower().split())
+    if not definition or not concrete_step:
+        return False
+
+    pattern_parts = []
+    cursor = 0
+    for match in _TEMPLATE_FIELD.finditer(definition):
+        pattern_parts.append(re.escape(definition[cursor:match.start()]))
+        pattern_parts.append(r".+?")
+        cursor = match.end()
+    pattern_parts.append(re.escape(definition[cursor:]))
+    return bool(re.fullmatch("".join(pattern_parts), concrete_step))
+
+
 def _warns_about_unsupported_behavior(proposal):
     text = "\n".join(
         [str(getattr(proposal, "summary", "") or "")]
@@ -91,7 +109,10 @@ def _proposal_covers_all_missing_steps(proposal, automation):
         return True
 
     generated = _decorated_step_texts(getattr(proposal, "test_code", ""))
-    return missing.issubset(generated)
+    return all(
+        any(_step_definition_matches(definition, step) for definition in generated)
+        for step in missing
+    )
 
 
 def _application_source(bdd_sync):
