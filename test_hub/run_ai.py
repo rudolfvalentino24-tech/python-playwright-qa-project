@@ -97,6 +97,21 @@ register_run_guards(hub)
 # final QA reports after the existing views have finished applying their patches.
 register_test_plan_process(test_plans, hub, ui_redesign)
 
+# The process renderer passes unattached Test Cases and unique covered Test Cases
+# separately. Recombine them for Edit Coverage so every Test Case remains available
+# for multi-coverage linking even after it is already used elsewhere in the plan.
+coverage_cases_marker = "{% if coverage_link_cases %}"
+if coverage_cases_marker in test_plans.TEST_PLAN_PAGE_HTML:
+    test_plans.TEST_PLAN_PAGE_HTML = test_plans.TEST_PLAN_PAGE_HTML.replace(
+        coverage_cases_marker,
+        "{% set coverage_link_cases = attachable_cases + process.covered_cases %}\n                  {% if coverage_link_cases %}",
+        1,
+    )
+else:
+    raise RuntimeError(
+        "Test Plan coverage linking template changed; expected coverage_link_cases marker was not found."
+    )
+
 # The process module adds the tabs/CSS first, then inserts the large process panel
 # block before the existing Test Plan JavaScript. Older code used a collapsed
 # "</main><script>" marker, while the real template contains a newline between
