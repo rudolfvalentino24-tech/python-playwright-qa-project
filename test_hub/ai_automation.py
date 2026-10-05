@@ -195,6 +195,51 @@ Application source (read-only evidence of actual supported behavior):
     if proposal is None:
         raise RuntimeError("The AI automation response could not be parsed.")
 
+    # Retry once with focused test-first context when the model returns an empty proposal.
+    if not (proposal.test_code or "").strip():
+        retry_instructions = f"""You are performing a focused test-first automation retry.
+
+Generate pytest-bdd implementations for these missing steps:
+{missing_steps}
+
+The product feature may not exist yet.
+Existing Page Object contracts are valid evidence.
+You MUST return non-empty test_code for every implementable missing step.
+Reuse existing Page Object locators/methods whenever possible.
+Add Page Object methods only when required.
+Do not modify application source.
+"""
+
+        retry_input = f"""Test case: {case.case_key} — {case.title}
+
+Scenario:
+{automation['preview']}
+
+Current runner:
+{context['runner_content']}
+
+Shared BDD context:
+{context['conftest_content']}
+
+Existing Page Objects:
+{context['page_objects']}
+"""
+
+        retry_response = client.responses.parse(
+            model=OPENAI_MODEL,
+            input=[
+                {"role": "system", "content": retry_instructions},
+                {"role": "user", "content": retry_input},
+            ],
+            text_format=AutomationProposal,
+        )
+        proposal = retry_response.output_parsed
+
+        if proposal is None or not (proposal.test_code or "").strip():
+            raise RuntimeError(
+                "AI returned no automation code after the focused test-first retry."
+            )
+
     if proposal.page_object_file and proposal.page_object_file not in context["allowed_page_objects"]:
         raise RuntimeError("AI selected a Page Object file outside the allowed project files.")
     return proposal
