@@ -139,24 +139,36 @@ def apply_ai_automation_guard(ai_automation):
     def guarded_generate(bdd_sync, case, automation):
         proposal = original_generate(bdd_sync, case, automation)
 
-        missing_capability = _missing_product_capability(bdd_sync, case, automation)
-        if missing_capability:
-            proposal.warnings = list(getattr(proposal, "warnings", []) or []) + [
-                f"Application source contains no evidence of the required {missing_capability}."
-            ]
-            return _block_proposal(
-                proposal,
-                f"Automation was not generated because the application source contains "
-                f"no evidence of the required {missing_capability}. Implement the product "
-                "feature first, then generate the automation again.",
-            )
+        missing_capability = _missing_product_capability(
+            bdd_sync,
+            case,
+            automation,
+        )
+        test_first_mode = bool(missing_capability)
 
-        if _warns_about_unsupported_behavior(proposal):
+        if test_first_mode:
+            # Keep valid test-first automation even when development is not complete yet.
+            proposal.warnings = list(
+                getattr(proposal, "warnings", []) or []
+            ) + [
+                (
+                    f"Test-first automation: application source does not yet contain "
+                    f"the required {missing_capability}. The generated test is expected "
+                    "to fail until the product feature is implemented."
+                )
+            ]
+
+            if not (getattr(proposal, "test_code", "") or "").strip():
+                return _block_proposal(
+                    proposal,
+                    "AI did not generate test-first automation for the missing product capability.",
+                )
+
+        elif _warns_about_unsupported_behavior(proposal):
             return _block_proposal(
                 proposal,
                 "Automation was not generated because the application source does not "
-                "support all behavior required by this scenario. Implement the product "
-                "feature first, then generate the automation again.",
+                "support all behavior required by this scenario.",
             )
 
         if not _proposal_covers_all_missing_steps(proposal, automation):
