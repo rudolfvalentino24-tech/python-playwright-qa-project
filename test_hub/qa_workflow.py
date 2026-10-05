@@ -1056,7 +1056,9 @@ def register_qa_workflow(hub):
         quality_marker = '<div class="prd-nav-label">Quality</div>'
         dashboard_active = hub.request.path in {"/", "/qa-workspace"}
         if dashboard_active:
-            nav = nav.replace(" prd-active", "")
+            # The product shell initially treats `/` as Test Cases. Clear that
+            # generated active state before highlighting Dashboard instead.
+            nav = nav.replace('class="prd-active"', 'class=""')
         dashboard_link = (
             f'<a class="{"prd-active" if dashboard_active else ""}" href="/">'
             '<i>▦</i>Dashboard</a>'
