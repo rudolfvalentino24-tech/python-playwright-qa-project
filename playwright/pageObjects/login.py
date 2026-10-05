@@ -22,7 +22,7 @@ class LoginPage:
 
     def login(self, userEmail, userPassword):
         self.page.get_by_label("Username").fill(userEmail)
-        self.page.get_by_label("Password").fill(userPassword)
+        self.page.get_by_label("Password", exact=True).fill(userPassword)
         self.page.locator("#termsCheckbox").check()
         self.page.get_by_role("button", name="Login").click()
         dashboardPage = DashboardPage(self.page)
@@ -33,7 +33,7 @@ class LoginPage:
     # Submit the login form without assuming that authentication succeeds
     def submitLogin(self, userEmail, userPassword):
         self.page.get_by_label("Username").fill(userEmail)
-        self.page.get_by_label("Password").fill(userPassword)
+        self.page.get_by_label("Password", exact=True).fill(userPassword)
         self.page.locator("#termsCheckbox").check()
         self.page.get_by_role("button", name="Login").click()
 
@@ -45,7 +45,7 @@ class LoginPage:
     # Submit valid credentials without accepting the Terms & Conditions
     def loginWithoutTerms(self, userEmail, userPassword):
         self.page.get_by_label("Username").fill(userEmail)
-        self.page.get_by_label("Password").fill(userPassword)
+        self.page.get_by_label("Password", exact=True).fill(userPassword)
         self.page.get_by_role("button", name="Login").click()
 
     # Verify that the login attempt was rejected
@@ -113,7 +113,7 @@ class LoginPage:
     def enterLoginCredentials(self, userEmail, userPassword):
         # Enter valid login data without submitting the form
         self.page.get_by_label("Username").fill(userEmail)
-        self.page.get_by_label("Password").fill(userPassword)
+        self.page.get_by_label("Password", exact=True).fill(userPassword)
         self.page.locator("#termsCheckbox").check()
 
     def verifyLoginFormNotSubmitted(self):
@@ -126,16 +126,16 @@ class LoginPage:
         return DashboardPage(self.page)
 
     def enterPassword(self, password):
-        self.page.get_by_label("Password").fill(password)
+        self.page.get_by_label("Password",exact=True).fill(password)
 
     def verifyPasswordMasked(self):
         # Verify the password field is using the browser's hidden password mode
-        password_field = self.page.get_by_label("Password")
+        password_field = self.page.get_by_label("Password", exact=True)
         expect(password_field).to_have_attribute("type", "password")
 
     def verifyPasswordVisible(self):
         # Verify the password field is visible
-        password_field = self.page.get_by_label("Password")
+        password_field = self.page.get_by_label("Password", exact=True)
         expect(password_field).to_have_attribute("type", "text")
 
     def clickPasswordVisibilityToggle(self):
@@ -143,11 +143,11 @@ class LoginPage:
 
     def verifyPasswordValue(self, password):
         # Verify toggling visibility does not modify the entered password
-        password_field = self.page.get_by_label("Password")
+        password_field = self.page.get_by_label("Password", exact=True)
         expect(password_field).to_have_value(password)
 
     def navigateToPasswordVisibilityToggleUsingKeyboard(self):
-        self.page.get_by_label("Password").press("Tab")
+        self.page.get_by_label("Password", exact=True).press("Tab")
 
     def verifyPasswordVisibilityToggleFocused(self):
         toggle = self.page.get_by_test_id("password-visibility-toggle")
