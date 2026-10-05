@@ -109,9 +109,9 @@ TEST_PLAN_PAGE_HTML = r'''
             </div>
             <div class="item-controls">
               <span class="state {% if is_created %}created{% else %}pending{% endif %}">{% if is_created %}Created{% else %}Pending{% endif %}</span>
-              {% if not is_created and attachable_cases %}
+              {% if not is_created and coverage_link_cases %}
                 <form class="attach-inline" method="post" action="{{ url_for('attach_test_plan_item_case', plan_id=plan.id, item_id=item.id) }}">
-                  <select name="case_id" required><option value="">Attach Test Case…</option>{% for case in attachable_cases %}<option value="{{ case.id }}">{{ case.case_key }} — {{ case.title }}</option>{% endfor %}</select>
+                  <select name="case_id" required><option value="">Attach Test Case…</option>{% for case in coverage_link_cases %}<option value="{{ case.id }}">{{ case.case_key }} — {{ case.title }}</option>{% endfor %}</select>
                   <button class="secondary">Attach</button>
                 </form>
               {% endif %}
@@ -159,9 +159,9 @@ if(planCaseSearch){planCaseSearch.addEventListener('input',()=>{const query=plan
 
 def _patch_test_plans_navigation(ui_redesign):
     # Insert Test Plans between Test Cases and Test Runs in the shared navigation.
-    test_runs_marker = '''    <details class="th-menu">\
+    test_runs_marker = '''    <details class="th-menu">\\
       <summary>▷ <span>Test Runs</span>⌄</summary>'''
-    test_plans_link = '''    <a class="th-nav-link" href="{{ url_for('test_plans') }}">☑ <span>Test Plans</span></a>\
+    test_plans_link = '''    <a class="th-nav-link" href="{{ url_for('test_plans') }}">☑ <span>Test Plans</span></a>\\
 '''
 
     if test_plans_link not in ui_redesign.NAV_HTML:
@@ -333,12 +333,17 @@ def register_test_plans(hub, ui_redesign):
         }
         attachable_cases = [case for case in all_cases if case.id not in attached_case_ids]
 
+        # Planned Coverage may reuse a Test Case that is already linked elsewhere
+        # in the same plan because one executable case can satisfy multiple requirements.
+        coverage_link_cases = all_cases
+
         return hub.render_template_string(
             TEST_PLAN_PAGE_HTML,
             plan=plan,
             summary=plan_summary(plan),
             statuses=["Draft", "Active", "Completed"],
             attachable_cases=attachable_cases,
+            coverage_link_cases=coverage_link_cases,
             nav_html=render_shared_navigation(hub, ui_redesign),
             shell_css=ui_redesign.SHELL_CSS,
         )
@@ -433,18 +438,27 @@ def register_test_plans(hub, ui_redesign):
         if case is None:
             return "Test Case not found.", 404
 
-        duplicate = any(
-            other.id != item.id
-            and other.test_case is not None
-            and other.test_case.id == case.id
-            for other in plan.items
+        # A Test Case selected during creation is initially added as a standalone
+        # covered item. Once it implements explicit Planned Coverage, remove that
+        # redundant row while keeping the Test Case reusable for other coverage items.
+        redundant_item = next(
+            (
+                other
+                for other in plan.items
+                if other.id != item.id
+                and other.test_case_id == case.id
+                and other.title_snapshot == case.title
+                and other.feature_snapshot == case.feature_name
+                and not (other.notes or "").strip()
+            ),
+            None,
         )
-        if duplicate:
-            return "That Test Case is already attached to this Test Plan.", 400
 
         # Keep the original planned title/feature as the coverage requirement and
         # link the real Test Case beside it as proof that the coverage was created.
         item.test_case = case
+        if redundant_item is not None:
+            hub.db.session.delete(redundant_item)
         touch_plan(plan)
         hub.db.session.commit()
         return hub.redirect(hub.url_for("test_plan_details", plan_id=plan.id))
