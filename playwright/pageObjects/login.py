@@ -124,3 +124,50 @@ class LoginPage:
         # Submit credentials that were already entered in the login form
         self.page.get_by_role("button", name="Login").click()
         return DashboardPage(self.page)
+
+    def enterPassword(self, password):
+        self.page.get_by_label("Password").fill(password)
+
+    def verifyPasswordMasked(self):
+        # Verify the password field is using the browser's hidden password mode
+        password_field = self.page.get_by_label("Password")
+        expect(password_field).to_have_attribute("type", "password")
+
+    def verifyPasswordVisible(self):
+        # Verify the password field is visible
+        password_field = self.page.get_by_label("Password")
+        expect(password_field).to_have_attribute("type", "text")
+
+    def clickPasswordVisibilityToggle(self):
+        self.page.get_by_role("button", name="Show password").click()
+
+    def verifyPasswordValue(self, password):
+        # Verify toggling visibility does not modify the entered password
+        password_field = self.page.get_by_label("Password")
+        expect(password_field).to_have_value(password)
+
+    def navigateToPasswordVisibilityToggleUsingKeyboard(self):
+        self.page.get_by_label("Password").press("Tab")
+
+    def verifyPasswordVisibilityToggleFocused(self):
+        toggle = self.page.get_by_test_id("password-visibility-toggle")
+        expect(toggle).to_be_focused()
+
+    def activatePasswordVisibilityToggleUsingKeyboard(self):
+        toggle = self.page.get_by_test_id("password-visibility-toggle")
+        toggle.press("Enter")
+
+    def verifyPasswordVisibilityToggleAccessibleLabel(self, label):
+        # Verify the visibility control exposes the expected accessible name
+        toggle = self.page.get_by_test_id("password-visibility-toggle")
+        expect(toggle).to_have_accessible_name(label)
+
+    def reloadLoginPage(self):
+        # Reload the login page to verify visibility state does not persist
+        self.page.reload(wait_until="domcontentloaded")
+        self.verifyLoginPage()
+
+    def leaveAndReturnToLoginPage(self):
+        # Leave the login page and return through the existing Terms navigation flow
+        self.openTermsAndConditions()
+        self.returnToLoginPage()
