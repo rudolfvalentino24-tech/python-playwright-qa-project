@@ -161,6 +161,30 @@ input[type="password"]:focus{
     box-shadow:0 0 0 4px rgba(59,115,239,.12)
 }
 
+.password-toggle{
+    position:absolute;
+    right:10px;
+    top:50%;
+    transform:translateY(-50%);
+    width:40px;
+    height:40px;
+    border:0;
+    border-radius:8px;
+    background:transparent;
+    color:#64748b;
+    cursor:pointer;
+    font-size:18px;
+}
+
+.password-toggle:focus-visible{
+    outline:3px solid rgba(59,115,239,.35);
+    outline-offset:2px;
+}
+
+#password{
+    padding-right:58px;
+}
+
 .option{
     display:flex;
     align-items:center;
@@ -284,6 +308,15 @@ input[type="password"]:focus{
                 placeholder="Enter your password"
                 required
                 data-testid="password-input">
+
+            <button
+                type="button"
+                class="password-toggle"
+                data-testid="password-visibility-toggle"
+                aria-label="Show password"
+                aria-pressed="false">
+                👁
+            </button>
         </div>
 
         <label class="option">
@@ -332,6 +365,26 @@ input[type="password"]:focus{
 </main>
 
 <script>
+const passwordInput = document.getElementById("password");
+const passwordToggle = document.querySelector(
+    '[data-testid="password-visibility-toggle"]'
+);
+
+// Toggle password visibility without submitting or changing the entered value.
+passwordToggle.addEventListener("click", () => {
+    const showPassword = passwordInput.type === "password";
+
+    passwordInput.type = showPassword ? "text" : "password";
+    passwordToggle.setAttribute(
+        "aria-label",
+        showPassword ? "Hide password" : "Show password"
+    );
+    passwordToggle.setAttribute(
+        "aria-pressed",
+        showPassword ? "true" : "false"
+    );
+});
+
 document.getElementById("loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
 
