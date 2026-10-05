@@ -120,6 +120,42 @@ document.addEventListener('click', function(event){
         1,
     )
 
+    # Keep the final product redesign synchronized with this control layout.
+    # Edit Coverage owns both requirement editing and Test Case linking; the old
+    # separate attach-modal pass must not move or duplicate those controls later.
+    import product_redesign
+
+    old_redesign_flow = '''    qsa('.planned-edit').forEach((details,idx)=>{
+      const item=details.closest('.item');const form=qs('form',details);if(!item||!form)return;
+      const id='prdEditCoverage'+idx;details.remove();const wrap=modalize(form,id,'Edit planned coverage','Update the requirement without changing the linked Test Case.',false);
+      if(wrap){const controls=qs('.item-controls',item);addButton(controls,'Edit',id,false)}
+    });
+    qsa('form.attach-inline').forEach((form,idx)=>{
+      const item=form.closest('.item');if(!item)return;
+      const id='prdLinkCase'+idx;const label=(form.textContent||'').includes('Change')?'Change Test Case':'Attach Test Case';
+      const wrap=modalize(form,id,label,'Choose the Test Case that implements this planned coverage.',true);
+      if(wrap)setupAttachCaseSearch(form);
+      const controls=qs('.item-controls',item);addButton(controls,label,id,false)
+    });'''
+
+    new_redesign_flow = '''    qsa('.planned-edit').forEach((details,idx)=>{
+      const item=details.closest('.item');const form=qs('.planned-edit-form',details)||qs('form',details);if(!item||!form)return;
+      const id='prdEditCoverage'+idx;
+      const wrap=modalize(form,id,'Edit planned coverage','Update the requirement and attach or change the Test Case that covers it.',true);
+      details.remove();
+      if(wrap){const controls=qs('.item-controls',item);addButton(controls,'Edit',id,false)}
+    });'''
+
+    if old_redesign_flow not in product_redesign.REDESIGN_JS:
+        raise RuntimeError(
+            "Product redesign Test Plan flow changed; expected Edit Coverage/Attach flow was not found."
+        )
+    product_redesign.REDESIGN_JS = product_redesign.REDESIGN_JS.replace(
+        old_redesign_flow,
+        new_redesign_flow,
+        1,
+    )
+
     @hub.app.post("/test-plans/<int:plan_id>/items/<int:item_id>/edit")
     def edit_test_plan_item(plan_id, item_id):
         plan = hub.db.session.get(hub.TestPlan, plan_id)
