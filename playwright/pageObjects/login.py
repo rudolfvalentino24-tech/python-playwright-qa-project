@@ -109,3 +109,18 @@ class LoginPage:
                 exact=True,
             )
         ).to_be_visible()
+
+    def enterLoginCredentials(self, userEmail, userPassword):
+        # Enter valid login data without submitting the form
+        self.page.get_by_label("Username").fill(userEmail)
+        self.page.get_by_label("Password").fill(userPassword)
+        self.page.locator("#termsCheckbox").check()
+
+    def verifyLoginFormNotSubmitted(self):
+        # Verify using the visibility toggle did not navigate away from login
+        expect(self.page).to_have_url(f"{storeURL}/")
+
+    def submitLoginForm(self):
+        # Submit credentials that were already entered in the login form
+        self.page.get_by_role("button", name="Login").click()
+        return DashboardPage(self.page)
