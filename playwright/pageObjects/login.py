@@ -139,7 +139,7 @@ class LoginPage:
         expect(password_field).to_have_attribute("type", "text")
 
     def clickPasswordVisibilityToggle(self):
-        self.page.get_by_role("button", name="Show password").click()
+            self.page.get_by_test_id("password-visibility-toggle").click()
 
     def verifyPasswordValue(self, password):
         # Verify toggling visibility does not modify the entered password
