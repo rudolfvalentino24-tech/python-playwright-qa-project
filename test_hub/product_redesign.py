@@ -310,6 +310,11 @@ REDESIGN_JS = r"""
 })();
 """
 
+FAVICON_LINK = (
+    '<link rel="icon" type="image/svg+xml" '
+    'href="data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2064%2064%27%3E%3Crect%20width=%2764%27%20height=%2764%27%20rx=%2714%27%20fill=%27%232563eb%27/%3E%3Ctext%20x=%2732%27%20y=%2743%27%20text-anchor=%27middle%27%20font-family=%27Arial%2Csans-serif%27%20font-size=%2736%27%20font-weight=%27700%27%20fill=%27white%27%3ET%3C/text%3E%3C/svg%3E">'
+)
+
 SIDEBAR_TEMPLATE = r"""
 <aside id="prdSidebar" class="prd-sidebar">
   <a class="prd-brand" href="{{ url_for('index') }}"><span class="prd-logo">T</span><strong>Test <span>Hub</span></strong></a>
@@ -673,6 +678,10 @@ def register_product_redesign(hub):
 
         active = _active_section(hub.request.path)
         sidebar = hub.render_template_string(SIDEBAR_TEMPLATE, active=active)
+
+        # Use the Test Hub brand mark as the browser tab icon on every product page.
+        if 'rel="icon"' not in html and "</head>" in html:
+            html = html.replace("</head>", FAVICON_LINK + "</head>", 1)
 
         # Keep all existing forms/routes intact; only replace the presentation shell.
         html = html.replace("</head>", "<style data-product-redesign>"+REDESIGN_CSS+"</style></head>", 1)
