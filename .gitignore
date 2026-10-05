@@ -10,3 +10,4 @@ test-results/
 report.html
 *.zip
 artifacts/local-review/store-*.html
+test_hub/test_hub.db
