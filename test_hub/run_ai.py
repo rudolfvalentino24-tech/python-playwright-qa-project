@@ -185,6 +185,78 @@ register_qa_workflow(hub)
 # so it receives the normal Test Hub navigation and styling.
 register_help_page(hub)
 
+# Keep successful actions in the context where the user performed them. Existing
+# redirects that already include a section anchor are preserved unchanged.
+_test_plan_redirect_fragments = {
+    "add_test_plan_item": "coverage",
+    "attach_test_plan_cases": "coverage",
+    "attach_test_plan_item_case": "coverage",
+    "remove_test_plan_item": "coverage",
+    "edit_test_plan_item": "coverage",
+    "detach_test_plan_item_case": "coverage",
+    "attach_test_plan_release": "scope",
+    "remove_test_plan_release": "scope",
+    "attach_test_plan_jira": "scope",
+    "remove_test_plan_jira": "scope",
+}
+
+
+@hub.app.after_request
+def preserve_action_navigation(response):
+    if response.status_code not in {301, 302, 303, 307, 308}:
+        return response
+
+    endpoint = hub.request.endpoint or ""
+    location = response.headers.get("Location", "")
+    if not location:
+        return response
+
+    # Jira sync errors deliberately return to the Test Cases page where the
+    # existing warning UI can display the error message.
+    if "jira_sync_error=" in location:
+        return response
+
+    fragment = _test_plan_redirect_fragments.get(endpoint)
+    if fragment and "#" not in location:
+        response.headers["Location"] = location + f"#{fragment}"
+        return response
+
+    # Editing or changing status from a Test Case details page should keep the
+    # user on that Test Case instead of dropping them back on the full list.
+    if endpoint == "update_case":
+        case_key = hub.request.form.get("case_key", "").strip().upper()
+        if not case_key:
+            case_key = (hub.request.view_args or {}).get("case_key", "")
+        if case_key:
+            response.headers["Location"] = hub.url_for(
+                "test_case_details",
+                case_key=case_key,
+            )
+        return response
+
+    if endpoint == "set_status":
+        case_key = (hub.request.view_args or {}).get("case_key", "")
+        if case_key:
+            response.headers["Location"] = hub.url_for(
+                "test_case_details",
+                case_key=case_key,
+            )
+        return response
+
+    # When AI Designer created cases for a specific Test Plan, return directly to
+    # that plan's coverage instead of losing the user on the general Test Cases list.
+    if endpoint == "ai_create_selected_cases":
+        test_plan_id = hub.request.form.get("test_plan_id", "").strip()
+        if test_plan_id.isdigit():
+            response.headers["Location"] = (
+                hub.url_for("test_plan_details", plan_id=int(test_plan_id))
+                + "#coverage"
+            )
+        return response
+
+    return response
+
+
 # Apply the final product design system after every existing page and extension
 # has registered so older template patches cannot overwrite the new shell/modals.
 register_product_redesign(hub)
