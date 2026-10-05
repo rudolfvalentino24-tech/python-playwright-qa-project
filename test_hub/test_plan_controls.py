@@ -30,6 +30,7 @@ def apply_test_plan_controls(test_plans, hub):
               <form method="post" action="{{ url_for('remove_test_plan_item', plan_id=plan.id, item_id=item.id) }}" onsubmit="return confirm('Remove this checklist item?')"><button class="danger">Remove</button></form>'''
 
     new_controls = '''              {% if coverage_link_cases %}
+                <button class="secondary" type="button" data-prd-open="prdLinkCase{{ loop.index0 }}">{% if is_created %}Change Test Case{% else %}Attach Test Case{% endif %}</button>
                 <form class="attach-inline" method="post" action="{{ url_for('attach_test_plan_item_case', plan_id=plan.id, item_id=item.id) }}">
                   <select name="case_id" required>
                     <option value="">{% if is_created %}Change Test Case…{% else %}Attach Test Case…{% endif %}</option>
