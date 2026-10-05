@@ -12,7 +12,7 @@ class LoginPage:
 
     def login(self, userEmail, userPassword):
         self.page.get_by_label("Username").fill(userEmail)
-        self.page.get_by_label("Password").fill(userPassword)
+        self.page.get_by_label("Password", exact=True).fill(userPassword)
         self.page.locator("#termsCheckbox").check()
         self.page.get_by_role("button", name="Login").click()
         dashboardPage = DashboardPage(self.page)
@@ -23,7 +23,7 @@ class LoginPage:
     # Submit the login form without assuming that authentication succeeds
     def submitLogin(self, userEmail, userPassword):
         self.page.get_by_label("Username").fill(userEmail)
-        self.page.get_by_label("Password").fill(userPassword)
+        self.page.get_by_label("Password", exact=True).fill(userPassword)
         self.page.locator("#termsCheckbox").check()
         self.page.get_by_role("button", name="Login").click()
 
@@ -35,7 +35,7 @@ class LoginPage:
     # Submit valid credentials without accepting the Terms & Conditions
     def loginWithoutTerms(self, userEmail, userPassword):
         self.page.get_by_label("Username").fill(userEmail)
-        self.page.get_by_label("Password").fill(userPassword)
+        self.page.get_by_label("Password", exact=True).fill(userPassword)
         self.page.get_by_role("button", name="Login").click()
 
     # Verify that the login attempt was rejected
