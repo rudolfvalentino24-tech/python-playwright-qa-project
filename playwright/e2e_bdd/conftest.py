@@ -531,3 +531,7 @@ def password_should_be_visible(shared_data):
 def user_clicks_password_visibility_toggle(shared_data):
     shared_data["login_page"].clickPasswordVisibilityToggle()
 
+@then(parsers.parse('the password value should remain "{password}"'))
+def password_value_should_remain(shared_data, password):
+    shared_data["login_page"].verifyPasswordValue(password)
+
