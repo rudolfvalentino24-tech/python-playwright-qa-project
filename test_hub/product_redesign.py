@@ -328,6 +328,7 @@ SIDEBAR_TEMPLATE = r"""
     <a class="{% if active=='releases' %}prd-active{% endif %}" href="{{ url_for('releases') }}"><i>◇</i>Releases</a>
     <div class="prd-nav-label">Tools</div>
     <a class="{% if active=='ai' %}prd-active{% endif %}" href="{{ url_for('ai_test_designer') }}"><i>✦</i>AI Test Designer</a>
+    <a class="{% if active=='help' %}prd-active{% endif %}" href="{{ url_for('help_documentation') }}"><i>?</i>Help & Documentation</a>
   </nav>
   <div class="prd-side-foot"><div>QA workspace<br><strong style="color:#d0d5dd">Jira · Jenkins · Playwright</strong></div></div>
 </aside>
@@ -348,6 +349,9 @@ def _active_section(path):
         return "releases"
     if path.startswith("/ai-test") or path.startswith("/ai/"):
         return "ai"
+    # Keep the Help page highlighted while users browse in-app documentation.
+    if path.startswith("/help"):
+        return "help"
     return "cases"
 
 
