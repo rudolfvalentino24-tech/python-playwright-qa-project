@@ -512,6 +512,7 @@ def second_admin_logs_in(second_admin_credentials, shared_data):
 def admin_opens_history_from_store(shared_data):
     shared_data["orders_page"] = shared_data["dashboard_page"].selectOrdersNaviLink()
 
+@given(parsers.parse('the user enters "{password}" in the password field'))
 @when(parsers.parse('the user enters "{password}" in the password field'))
 def user_enters_password(shared_data, password):
     shared_data["login_page"].enterPassword(password)
