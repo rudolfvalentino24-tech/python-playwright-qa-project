@@ -21,19 +21,19 @@ def apply_test_plan_controls(test_plans, hub):
         )
     )
 
-    old_controls = '''              {% if not is_created and attachable_cases %}
+    old_controls = '''              {% if not is_created and coverage_link_cases %}
                 <form class="attach-inline" method="post" action="{{ url_for('attach_test_plan_item_case', plan_id=plan.id, item_id=item.id) }}">
-                  <select name="case_id" required><option value="">Attach Test Case…</option>{% for case in attachable_cases %}<option value="{{ case.id }}">{{ case.case_key }} — {{ case.title }}</option>{% endfor %}</select>
+                  <select name="case_id" required><option value="">Attach Test Case…</option>{% for case in coverage_link_cases %}<option value="{{ case.id }}">{{ case.case_key }} — {{ case.title }}</option>{% endfor %}</select>
                   <button class="secondary">Attach</button>
                 </form>
               {% endif %}
               <form method="post" action="{{ url_for('remove_test_plan_item', plan_id=plan.id, item_id=item.id) }}" onsubmit="return confirm('Remove this checklist item?')"><button class="danger">Remove</button></form>'''
 
-    new_controls = '''              {% if attachable_cases %}
+    new_controls = '''              {% if coverage_link_cases %}
                 <form class="attach-inline" method="post" action="{{ url_for('attach_test_plan_item_case', plan_id=plan.id, item_id=item.id) }}">
                   <select name="case_id" required>
                     <option value="">{% if is_created %}Change Test Case…{% else %}Attach Test Case…{% endif %}</option>
-                    {% for case in attachable_cases %}<option value="{{ case.id }}">{{ case.case_key }} — {{ case.title }}</option>{% endfor %}
+                    {% for case in coverage_link_cases %}<option value="{{ case.id }}">{{ case.case_key }} — {{ case.title }}</option>{% endfor %}
                   </select>
                   <button class="secondary">{% if is_created %}Change{% else %}Attach{% endif %}</button>
                 </form>
