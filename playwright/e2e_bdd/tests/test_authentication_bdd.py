@@ -1,4 +1,4 @@
-from pytest_bdd import parsers, when, then, scenarios
+from pytest_bdd import given, parsers, when, then, scenarios
 
 scenarios("../features/authentication.feature")
 
@@ -68,3 +68,21 @@ def user_returns_to_login(shared_data):
 def qa_training_warning_is_displayed(shared_data):
     # Verify that the QA training warning is displayed on the Terms page
     shared_data["login_page"].verifyQATrainingWarning()
+
+
+@given("the user enters valid login credentials")
+def user_enters_valid_login_credentials(admin_credentials, shared_data):
+    shared_data["login_page"].enterLoginCredentials(
+        admin_credentials["userEmail"],
+        admin_credentials["userPassword"],
+    )
+
+
+@then("the login form should not be submitted")
+def login_form_should_not_be_submitted(shared_data):
+    shared_data["login_page"].verifyLoginFormNotSubmitted()
+
+
+@when("the user submits the login form")
+def user_submits_login_form(shared_data):
+    shared_data["dashboard_page"] = shared_data["login_page"].submitLoginForm()
