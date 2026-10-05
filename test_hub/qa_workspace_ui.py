@@ -1,11 +1,90 @@
 CSS = r"""
-.qh{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.qh h1{margin:0!important}.sub,.meta,.help{color:#667085;font-size:10px}.kpis,.grid{display:grid;gap:10px}.kpis{grid-template-columns:repeat(4,1fr);margin:14px 0}.grid{grid-template-columns:1fr 1fr}.card,.kpi{border:1px solid #e4e7ec;border-radius:10px;background:#fff;padding:14px}.kpi b{display:block;font-size:22px}.tabs{display:flex;gap:4px;flex-wrap:wrap;padding:4px;background:#f2f4f7;border-radius:9px;margin-bottom:12px}.tab{border:0;border-radius:7px;padding:8px 10px;background:transparent;font:inherit;font-size:10px;font-weight:800;cursor:pointer}.tab.on{background:#fff}.panel{display:none}.panel.on{display:block}.row{display:flex;justify-content:space-between;gap:9px;padding:9px 0;border-top:1px solid #eaecf0}.row:first-child{border-top:0}.main{flex:1;min-width:0}.title{font-size:11px;font-weight:850;color:#344054}.badge{display:inline-flex;padding:4px 7px;border-radius:999px;background:#f2f4f7;color:#475467;font-size:9px;font-weight:800}.fail{background:#fee4e2;color:#b42318}.pass{background:#dcfae6;color:#067647}.block{background:#fef0c7;color:#b54708}.info{background:#eaf2ff;color:#175cd3}.form{display:grid;gap:8px}.form label{font-size:10px;font-weight:800;color:#344054}.form input,.form select,.form textarea{width:100%;border:1px solid #d0d5dd;border-radius:8px;font:inherit;font-size:10px}.form input,.form select{height:36px;padding:0 8px}.form textarea{min-height:78px;padding:8px}.inline{display:flex;gap:7px;align-items:end}.inline>*{flex:1}.inline button{flex:0 0 auto}.checks{display:grid;gap:5px}.check{display:flex!important;gap:7px;align-items:flex-start}.check input{width:15px!important;height:15px!important}.criteria{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:8px 0}.criterion{padding:8px;border-radius:8px;background:#f9fafb;font-size:9px}.criterion.y{background:#ecfdf3}.criterion.n{background:#fef3f2}.table{width:100%;border-collapse:collapse;font-size:9px}.table th,.table td{padding:7px;border-top:1px solid #eaecf0;text-align:left;vertical-align:top}.table th{background:#f9fafb;color:#667085}.scroll{overflow:auto}.analysis{padding:10px;border:1px solid #d1e0ff;border-radius:8px;background:#f5f8ff;font-size:10px;line-height:1.45}.stack{display:grid;gap:10px}@media(max-width:950px){.grid{grid-template-columns:1fr}.criteria{grid-template-columns:1fr 1fr}.kpis{grid-template-columns:1fr 1fr}}@media(max-width:600px){.inline,.row{flex-direction:column}.kpis,.criteria{grid-template-columns:1fr}}
+.qh{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.qh h1{margin:0!important}.qh-actions{display:flex;gap:7px;flex-wrap:wrap}
+.sub,.meta,.help{color:#667085;font-size:10px}.section-title{display:flex;justify-content:space-between;align-items:end;gap:12px;margin:20px 0 9px}.section-title h2{margin:0!important;font-size:17px!important}.section-title .help{max-width:620px;text-align:right}
+.kpis,.grid,.sprint-kpis{display:grid;gap:10px}.kpis{grid-template-columns:repeat(4,1fr);margin:10px 0 16px}.grid{grid-template-columns:1fr 1fr}.card,.kpi{border:1px solid #e4e7ec;border-radius:10px;background:#fff;padding:14px}.kpi b{display:block;font-size:22px}.kpi span{display:block;margin-top:2px}
+.today-layout{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(340px,.8fr);gap:10px}.recommended{padding:16px;border:1px solid #b2ccff;border-radius:11px;background:linear-gradient(135deg,#f5f8ff,#fff)}.recommended-label{color:#175cd3;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.06em}.recommended h2{margin:5px 0 5px!important;font-size:18px!important}.recommended p{margin:0 0 12px;color:#475467;font-size:11px;line-height:1.45}
+.today-list{display:grid;gap:0}.today-task{display:grid;grid-template-columns:86px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid #eaecf0}.today-task:first-child{border-top:0}.task-kind{display:inline-flex;width:max-content;max-width:86px;padding:4px 7px;border-radius:999px;background:#f2f4f7;color:#475467;font-size:8px;font-weight:850;text-transform:uppercase}.task-kind.blocked,.task-kind.automation{background:#fee4e2;color:#b42318}.task-kind.retest,.task-kind.coverage{background:#fef0c7;color:#b54708}.task-kind.execution,.task-kind.testing{background:#eaf2ff;color:#175cd3}.task-kind.signoff{background:#ecfdf3;color:#067647}
+.sprint-summary{padding:16px}.sprint-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.sprint-head h2{margin:0!important;font-size:18px!important}.sprint-kpis{grid-template-columns:repeat(3,1fr);margin-top:12px}.sprint-kpi{padding:9px;border-radius:8px;background:#f9fafb}.sprint-kpi b{display:block;font-size:17px;color:#101828}.sprint-bars{display:grid;gap:8px;margin-top:12px}.bar-head{display:flex;justify-content:space-between;font-size:9px;font-weight:800;color:#475467}.bar{height:7px;border-radius:999px;background:#eaecf0;overflow:hidden}.bar>span{display:block;height:100%;border-radius:inherit;background:#2563eb}
+.plan-stack{display:grid;gap:10px}.plan-progress{padding:15px}.plan-progress-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.plan-progress-head h3{margin:0!important;font-size:14px!important}.plan-stage{margin-top:3px;color:#175cd3;font-size:10px;font-weight:850}.plan-metrics{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;color:#667085;font-size:9px}.stage-line{display:grid;grid-template-columns:repeat(7,minmax(90px,1fr));gap:3px;margin:13px 0 10px;overflow:auto}.stage-step{position:relative;min-width:90px;padding:7px 6px;border-radius:7px;background:#f2f4f7;color:#98a2b3;font-size:8px;font-weight:800;text-align:center;white-space:nowrap}.stage-step.done{background:#ecfdf3;color:#067647}.stage-step.current{background:#eaf2ff;color:#175cd3;box-shadow:inset 0 0 0 1px #b2ccff}.plan-next{display:flex;justify-content:space-between;gap:10px;align-items:center;padding-top:9px;border-top:1px solid #eaecf0}.plan-next strong{display:block;font-size:9px;color:#344054}.plan-next span{display:block;margin-top:2px;color:#667085;font-size:9px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;padding:4px;background:#f2f4f7;border-radius:9px;margin-bottom:12px}.tab{border:0;border-radius:7px;padding:8px 10px;background:transparent;font:inherit;font-size:10px;font-weight:800;cursor:pointer}.tab.on{background:#fff}.panel{display:none}.panel.on{display:block}.row{display:flex;justify-content:space-between;gap:9px;padding:9px 0;border-top:1px solid #eaecf0}.row:first-child{border-top:0}.main{flex:1;min-width:0}.title{font-size:11px;font-weight:850;color:#344054}.badge{display:inline-flex;padding:4px 7px;border-radius:999px;background:#f2f4f7;color:#475467;font-size:9px;font-weight:800}.fail{background:#fee4e2;color:#b42318}.pass{background:#dcfae6;color:#067647}.block{background:#fef0c7;color:#b54708}.info{background:#eaf2ff;color:#175cd3}.form{display:grid;gap:8px}.form label{font-size:10px;font-weight:800;color:#344054}.form input,.form select,.form textarea{width:100%;border:1px solid #d0d5dd;border-radius:8px;font:inherit;font-size:10px}.form input,.form select{height:36px;padding:0 8px}.form textarea{min-height:78px;padding:8px}.inline{display:flex;gap:7px;align-items:end}.inline>*{flex:1}.inline button{flex:0 0 auto}.checks{display:grid;gap:5px}.check{display:flex!important;gap:7px;align-items:flex-start}.check input{width:15px!important;height:15px!important}.criteria{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:8px 0}.criterion{padding:8px;border-radius:8px;background:#f9fafb;font-size:9px}.criterion.y{background:#ecfdf3}.criterion.n{background:#fef3f2}.table{width:100%;border-collapse:collapse;font-size:9px}.table th,.table td{padding:7px;border-top:1px solid #eaecf0;text-align:left;vertical-align:top}.table th{background:#f9fafb;color:#667085}.scroll{overflow:auto}.analysis{padding:10px;border:1px solid #d1e0ff;border-radius:8px;background:#f5f8ff;font-size:10px;line-height:1.45}.stack{display:grid;gap:10px}
+@media(max-width:1050px){.today-layout{grid-template-columns:1fr}.stage-line{grid-template-columns:repeat(7,120px)}}
+@media(max-width:950px){.grid{grid-template-columns:1fr}.criteria{grid-template-columns:1fr 1fr}.kpis{grid-template-columns:1fr 1fr}.sprint-kpis{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:600px){.inline,.row,.plan-next,.plan-progress-head,.sprint-head,.qh{flex-direction:column}.kpis,.criteria,.sprint-kpis{grid-template-columns:1fr}.today-task{grid-template-columns:1fr}.section-title{align-items:flex-start;flex-direction:column}.section-title .help{text-align:left}}
 """
 
 JS = r"""<script>(function(){function show(k){const t=document.querySelector('[data-qtab="'+k+'"]'),p=document.querySelector('[data-qpanel="'+k+'"]');if(!t||!p)return;document.querySelectorAll('[data-qtab]').forEach(x=>x.classList.remove('on'));document.querySelectorAll('[data-qpanel]').forEach(x=>x.classList.remove('on'));t.classList.add('on');p.classList.add('on')}document.addEventListener('click',e=>{const t=e.target.closest('[data-qtab]');if(!t)return;show(t.dataset.qtab);history.replaceState(null,'','#'+t.dataset.qtab)});show(location.hash.slice(1)||document.body.dataset.qaTab||'work')})();</script>"""
 
-PAGE = r"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QA Workspace</title><style>{{ css|safe }}</style></head><body data-qa-tab="{{ active_tab }}"><main class="th-page">
-<div class="qh"><div><h1>QA Workspace</h1><div class="sub">Tester workflow: what to test, what failed, what is blocked, what needs retest, and what is ready for release review.</div></div><a class="prd-btn" href="{{ url_for('test_plans') }}">Test Plans</a></div>
+PAGE = r"""<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QA Workplace - Test Hub</title><style>{{ css|safe }}</style>
+</head>
+<body data-qa-tab="{{ active_tab }}">
+<main class="th-page">
+<div class="qh">
+  <div><h1>QA Workplace</h1><div class="sub">Your daily QA dashboard — what needs attention now, where the sprint stands, and which stage each Test Plan is in.</div></div>
+  <div class="qh-actions"><a class="prd-btn" href="{{ url_for('index') }}">Test Cases</a><a class="prd-btn" href="{{ url_for('test_plans') }}">Test Plans</a></div>
+</div>
+
+<div class="section-title"><h2>Today</h2><div class="help">Prioritized from blockers → retests → failed automation → active execution → coverage gaps → untested cases → QA sign-off.</div></div>
+<div class="today-layout">
+  <section class="recommended">
+    <div class="recommended-label">Recommended next action</div>
+    {% if recommended %}
+      <h2>{{ recommended.title }}</h2>
+      <p><strong>{{ recommended.label }}</strong> · {{ recommended.meta }}</p>
+      <a class="prd-btn prd-btn-primary" href="{{ recommended.action_url }}">{{ recommended.action_label }}</a>
+    {% else %}
+      <h2>No urgent QA action</h2><p>There are no Active Test Plans or queued QA tasks right now.</p>
+      <a class="prd-btn" href="{{ url_for('test_plans') }}">Review Test Plans</a>
+    {% endif %}
+  </section>
+  <section class="card">
+    <div class="sprint-head"><div><h2>Today's queue</h2><div class="meta">{{ today|length }} prioritized item{% if today|length != 1 %}s{% endif %}</div></div></div>
+    <div class="today-list">
+      {% for item in today[:7] %}
+        <div class="today-task"><span class="task-kind {{ item.kind }}">{{ item.label }}</span><div><div class="title">{{ item.title }}</div><div class="meta">{{ item.meta }}</div></div><a class="prd-btn" href="{{ item.action_url }}">{{ item.action_label }}</a></div>
+      {% else %}<div class="help">Nothing is waiting in today's QA queue.</div>{% endfor %}
+    </div>
+  </section>
+</div>
+
+<div class="section-title"><h2>Current QA Sprint</h2><div class="help">Sprint scope is derived from Test Plans whose status is <strong>Active</strong>.</div></div>
+<section class="card sprint-summary">
+  <div class="sprint-head"><div><h2>{{ sprint.plan_count }} Active Test Plan{% if sprint.plan_count != 1 %}s{% endif %}</h2><div class="meta">Combined coverage and execution progress for the current QA sprint.</div></div>{% if sprint.plan_count %}<span class="badge info">{{ sprint.execution_pct }}% executed</span>{% endif %}</div>
+  <div class="sprint-kpis">
+    <div class="sprint-kpi"><b>{{ sprint.planned }}</b><span class="meta">Planned scenarios</span></div>
+    <div class="sprint-kpi"><b>{{ sprint.covered }}</b><span class="meta">Test Cases covered</span></div>
+    <div class="sprint-kpi"><b>{{ sprint.executed }}</b><span class="meta">Executed</span></div>
+    <div class="sprint-kpi"><b>{{ sprint.passed }}</b><span class="meta">Passed</span></div>
+    <div class="sprint-kpi"><b>{{ sprint.failed }}</b><span class="meta">Failed</span></div>
+    <div class="sprint-kpi"><b>{{ sprint.blocked }}</b><span class="meta">Blocked</span></div>
+  </div>
+  <div class="sprint-bars">
+    <div><div class="bar-head"><span>Coverage</span><span>{{ sprint.coverage_pct }}%</span></div><div class="bar"><span style="width:{{ sprint.coverage_pct }}%"></span></div></div>
+    <div><div class="bar-head"><span>Execution</span><span>{{ sprint.execution_pct }}%</span></div><div class="bar"><span style="width:{{ sprint.execution_pct }}%"></span></div></div>
+  </div>
+</section>
+
+<div class="section-title"><h2>Test Plan Progress</h2><div class="help">The current stage is calculated automatically from scope, coverage, executions, failures/retests and QA assessment.</div></div>
+<div class="plan-stack">
+{% for row in sprint.plans %}
+  <section class="card plan-progress">
+    <div class="plan-progress-head">
+      <div><h3><a class="title" href="{{ url_for('test_plan_details',plan_id=row.plan.id) }}">{{ row.plan.name }}</a></h3><div class="plan-stage">Current stage: {{ row.stage }}</div><div class="meta">{% if row.release_names %}Release {{ row.release_names|join(', ') }} · {% endif %}{{ row.covered }}/{{ row.total }} covered · {{ row.executed }}/{{ row.covered }} executed</div></div>
+      <span class="badge {% if row.failed %}fail{% elif row.blocked %}block{% elif row.stage=='Complete' %}pass{% else %}info{% endif %}">{{ row.stage }}</span>
+    </div>
+    <div class="stage-line">{% for step in row.steps %}<div class="stage-step {{ step.state }}">{% if step.state=='done' %}✓{% elif step.state=='current' %}●{% else %}○{% endif %} {{ step.name }}</div>{% endfor %}</div>
+    <div class="plan-metrics"><span>{{ row.total }} planned</span><span>{{ row.pending }} pending coverage</span><span>{{ row.passed }} passed</span><span>{{ row.failed }} failed</span><span>{{ row.blocked }} blocked</span><span>{{ row.not_run }} not run</span></div>
+    <div class="plan-next"><div><strong>Next</strong><span>{{ row.next_action }}</span></div><a class="prd-btn {% if row.stage in ['Execution','Defects & Retest'] %}prd-btn-primary{% endif %}" href="{{ row.action_url }}">{{ row.action_label }}</a></div>
+  </section>
+{% else %}
+  <section class="card help">No Active Test Plans. Mark a plan Active to include it in the Current QA Sprint.</section>
+{% endfor %}
+</div>
+
+<div class="section-title"><h2>QA tools</h2><div class="help">Use these tabs when you need the detailed workflow behind the daily dashboard.</div></div>
 <div class="kpis"><div class="kpi"><b>{{ work.testing|length }}</b><span class="meta">Needs testing</span></div><div class="kpi"><b>{{ work.retest|length }}</b><span class="meta">Needs retest</span></div><div class="kpi"><b>{{ work.blocked|length }}</b><span class="meta">Blocked</span></div><div class="kpi"><b>{{ work.auto_failed|length }}</b><span class="meta">Failed automation</span></div></div>
 <div class="tabs">{% for key,label in [('work','My Testing'),('gaps','Coverage Gaps'),('release','Release Readiness'),('risk','Risk'),('impact','Smart Scope / AI'),('explore','Exploratory'),('auto','Automation Health')] %}<button class="tab {% if loop.first %}on{% endif %}" data-qtab="{{ key }}">{{ label }}</button>{% endfor %}</div>
 
