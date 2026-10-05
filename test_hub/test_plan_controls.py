@@ -29,17 +29,7 @@ def apply_test_plan_controls(test_plans, hub):
               {% endif %}
               <form method="post" action="{{ url_for('remove_test_plan_item', plan_id=plan.id, item_id=item.id) }}" onsubmit="return confirm('Remove this checklist item?')"><button class="danger">Remove</button></form>'''
 
-    new_controls = '''              {% if coverage_link_cases %}
-                <button class="secondary" type="button" data-prd-open="prdLinkCase{{ loop.index0 }}">{% if is_created %}Change Test Case{% else %}Attach Test Case{% endif %}</button>
-                <form class="attach-inline" method="post" action="{{ url_for('attach_test_plan_item_case', plan_id=plan.id, item_id=item.id) }}">
-                  <select name="case_id" required>
-                    <option value="">{% if is_created %}Change Test Case…{% else %}Attach Test Case…{% endif %}</option>
-                    {% for case in coverage_link_cases %}<option value="{{ case.id }}">{{ case.case_key }} — {{ case.title }}</option>{% endfor %}
-                  </select>
-                  <button class="secondary">{% if is_created %}Change{% else %}Attach{% endif %}</button>
-                </form>
-              {% endif %}
-              {% if is_created %}
+    new_controls = '''              {% if is_created %}
                 <form method="post" action="{{ url_for('detach_test_plan_item_case', plan_id=plan.id, item_id=item.id) }}" onsubmit="return confirm('Detach the linked Test Case and return this coverage item to Pending?')">
                   <button class="secondary">Detach</button>
                 </form>
@@ -53,7 +43,18 @@ def apply_test_plan_controls(test_plans, hub):
                   <input name="title" required value="{{ item.title_snapshot }}">
                   <label>Notes</label>
                   <textarea name="notes">{{ item.notes }}</textarea>
-                  <button class="primary" type="submit">Save</button>
+                  {% if coverage_link_cases %}
+                    <div class="planned-case-link">
+                      <label>Linked Test Case</label>
+                      <input class="planned-case-search" type="search" placeholder="Search Test Case ID or title…" autocomplete="off">
+                      <select name="case_id" required>
+                        <option value="">{% if is_created %}Change Test Case…{% else %}Attach Test Case…{% endif %}</option>
+                        {% for case in coverage_link_cases %}<option value="{{ case.id }}" {% if item.test_case_id == case.id %}selected{% endif %}>{{ case.case_key }} — {{ case.title }}</option>{% endfor %}
+                      </select>
+                      <button class="secondary planned-case-submit" type="submit" formaction="{{ url_for('attach_test_plan_item_case', plan_id=plan.id, item_id=item.id) }}" formmethod="post">{% if is_created %}Change Test Case{% else %}Attach Test Case{% endif %}</button>
+                    </div>
+                  {% endif %}
+                  <button class="primary" type="submit">Save coverage</button>
                 </form>
               </details>
               <form method="post" action="{{ url_for('remove_test_plan_item', plan_id=plan.id, item_id=item.id) }}" onsubmit="return confirm('Remove this checklist item? This deletes the coverage requirement from the plan.')"><button class="danger">Remove</button></form>'''
@@ -70,11 +71,34 @@ def apply_test_plan_controls(test_plans, hub):
     # Keep the editing controls compact so the checklist stays readable even when
     # several planned coverage items are being maintained on the same page.
     controls_css = '''
-.planned-edit{width:100%;max-width:280px}.planned-edit>summary{list-style:none;text-align:center}.planned-edit>summary::-webkit-details-marker{display:none}.planned-edit-form{margin-top:7px;padding:9px;border:1px solid #dce6f3;border-radius:9px;background:#f9fbfe}.planned-edit-form label{display:block;margin:7px 0 4px;color:#536b87;font-size:9px;font-weight:900}.planned-edit-form input,.planned-edit-form textarea{width:100%;border:1px solid #ccd9eb;border-radius:7px;background:#fff;color:#183252;font:inherit;font-size:10px}.planned-edit-form input{height:33px;padding:0 8px}.planned-edit-form textarea{min-height:58px;padding:7px 8px;resize:vertical}.planned-edit-form button{margin-top:8px;width:100%}
+.planned-edit{width:100%;max-width:280px}.planned-edit>summary{list-style:none;text-align:center}.planned-edit>summary::-webkit-details-marker{display:none}.planned-edit-form{margin-top:7px;padding:9px;border:1px solid #dce6f3;border-radius:9px;background:#f9fbfe}.planned-edit-form label{display:block;margin:7px 0 4px;color:#536b87;font-size:9px;font-weight:900}.planned-edit-form input,.planned-edit-form textarea,.planned-edit-form select{width:100%;border:1px solid #ccd9eb;border-radius:7px;background:#fff;color:#183252;font:inherit;font-size:10px}.planned-edit-form input,.planned-edit-form select{height:33px;padding:0 8px}.planned-edit-form textarea{min-height:58px;padding:7px 8px;resize:vertical}.planned-edit-form button{margin-top:8px;width:100%}.planned-case-link{margin-top:12px;padding-top:10px;border-top:1px solid #dce6f3}.planned-case-search{margin-bottom:7px}.planned-case-submit{margin-bottom:2px}
 '''
     test_plans.TEST_PLAN_PAGE_HTML = test_plans.TEST_PLAN_PAGE_HTML.replace(
         "</style>",
         controls_css + "</style>",
+        1,
+    )
+
+    # Filter the Test Case selector inside Edit Coverage without creating another
+    # modal. The listener survives when product_redesign moves the form into a modal.
+    controls_js = '''
+<script>
+document.addEventListener('input', function(event){
+  if(!event.target.classList.contains('planned-case-search')) return;
+  const query=event.target.value.trim().toLowerCase();
+  const select=event.target.nextElementSibling;
+  if(!select || select.tagName !== 'SELECT') return;
+  Array.from(select.options).forEach(function(option){
+    if(!option.value) return;
+    option.hidden=!!query && !option.textContent.toLowerCase().includes(query);
+  });
+  if(select.selectedOptions.length && select.selectedOptions[0].hidden) select.value='';
+});
+</script>
+'''
+    test_plans.TEST_PLAN_PAGE_HTML = test_plans.TEST_PLAN_PAGE_HTML.replace(
+        "</body>",
+        controls_js + "</body>",
         1,
     )
 
