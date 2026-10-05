@@ -309,7 +309,25 @@ REDESIGN_JS = r"""
       const controls=qs('.item-controls',item);addButton(controls,label,id,false)
     });
   }
+  function setupTestCaseDetailActions(){
+    const match=location.pathname.match(/^\/test-cases\/([^/]+)\/?$/);
+    if(!match)return;
 
+    const editLink=qsa('a').find(
+      link=>link.textContent.trim()==='Edit test case'
+    );
+
+    if(!editLink||qs('[data-prd-case-automation]'))return;
+
+    // Open the BDD automation workspace directly from the Test Case page.
+    const automation=document.createElement('a');
+    automation.href='/test-cases/'+encodeURIComponent(match[1])+'/automation';
+    automation.className='button primary';
+    automation.dataset.prdCaseAutomation='1';
+    automation.textContent='Automation';
+
+    editLink.insertAdjacentElement('beforebegin',automation);
+  }
   function setupTabs(){
     document.addEventListener('click',e=>{
       const open=e.target.closest('[data-prd-open]');if(open){e.preventDefault();openModal(open.dataset.prdOpen)}
@@ -331,7 +349,7 @@ REDESIGN_JS = r"""
     const btn=qs('#prdMobileToggle'),side=qs('#prdSidebar');if(btn&&side)btn.addEventListener('click',()=>side.classList.toggle('prd-open'))
   }
 
-  setupTabs();setupSidebar();setupGeneralCreateModals();setupTestPlan();
+  setupTabs();setupSidebar();setupGeneralCreateModals();setupTestPlan();setupTestCaseDetailActions();
 })();
 """
 
