@@ -47,7 +47,7 @@ def apply_test_plan_controls(test_plans, hub):
                     <div class="planned-case-link">
                       <label>Linked Test Case</label>
                       <input class="planned-case-search" type="search" placeholder="Search Test Case ID or title…" autocomplete="off">
-                      <select name="case_id" required>
+                      <select name="case_id">
                         <option value="">{% if is_created %}Change Test Case…{% else %}Attach Test Case…{% endif %}</option>
                         {% for case in coverage_link_cases %}<option value="{{ case.id }}" {% if item.test_case_id == case.id %}selected{% endif %}>{{ case.case_key }} — {{ case.title }}</option>{% endfor %}
                       </select>
@@ -93,6 +93,24 @@ document.addEventListener('input', function(event){
     option.hidden=!!query && !option.textContent.toLowerCase().includes(query);
   });
   if(select.selectedOptions.length && select.selectedOptions[0].hidden) select.value='';
+});
+
+document.addEventListener('change', function(event){
+  if(event.target.matches('.planned-case-link select[name="case_id"]')){
+    event.target.setCustomValidity('');
+  }
+});
+
+document.addEventListener('click', function(event){
+  const button=event.target.closest('.planned-case-submit');
+  if(!button) return;
+  const form=button.form;
+  const select=form ? form.querySelector('select[name="case_id"]') : null;
+  if(select && !select.value){
+    event.preventDefault();
+    select.setCustomValidity('Select a Test Case.');
+    select.reportValidity();
+  }
 });
 </script>
 '''
