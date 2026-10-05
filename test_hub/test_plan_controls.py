@@ -156,6 +156,62 @@ document.addEventListener('click', function(event){
         1,
     )
 
+    # Respect the Test Plan tab in the URL instead of always forcing Overview.
+    old_tab_init = '''    const oldTabs=qs('.process-tabs');if(oldTabs)oldTabs.remove();
+    const tabs=document.createElement('div');tabs.className='prd-tabs';
+    const defs=[['overview','Overview'],['coverage','Coverage'],['executions','Executions'],['traceability','Traceability'],['report','Report']];
+    defs.forEach((d,i)=>{const b=document.createElement('button');b.className='prd-tab '+(i===0?'prd-active':'');b.type='button';b.dataset.prdTab=d[0];b.textContent=d[1];tabs.appendChild(b)});
+    actions.insertAdjacentElement('afterend',tabs);
+
+    const host=document.createElement('div');host.className='prd-plan-panels';tabs.insertAdjacentElement('afterend',host);
+    function panel(name,node){const p=document.createElement('div');p.className='prd-tab-panel '+(name==='overview'?'prd-active':'');p.dataset.prdPanel=name;if(node)p.appendChild(node);host.appendChild(p);return p}
+    panel('overview',scope);panel('coverage',coverage);panel('executions',exec);panel('traceability',trace);panel('report',assessment);'''
+
+    new_tab_init = '''    const oldTabs=qs('.process-tabs');if(oldTabs)oldTabs.remove();
+    const tabs=document.createElement('div');tabs.className='prd-tabs';
+    const defs=[['overview','Overview'],['coverage','Coverage'],['executions','Executions'],['traceability','Traceability'],['report','Report']];
+    const requestedTab=(window.location.hash||'').replace(/^#/,'').toLowerCase();
+    const initialTab=defs.some(d=>d[0]===requestedTab)?requestedTab:'overview';
+    defs.forEach((d)=>{const b=document.createElement('button');b.className='prd-tab '+(d[0]===initialTab?'prd-active':'');b.type='button';b.dataset.prdTab=d[0];b.textContent=d[1];tabs.appendChild(b)});
+    actions.insertAdjacentElement('afterend',tabs);
+
+    const host=document.createElement('div');host.className='prd-plan-panels';tabs.insertAdjacentElement('afterend',host);
+    function panel(name,node){const p=document.createElement('div');p.className='prd-tab-panel '+(name===initialTab?'prd-active':'');p.dataset.prdPanel=name;if(node)p.appendChild(node);host.appendChild(p);return p}
+    panel('overview',scope);panel('coverage',coverage);panel('executions',exec);panel('traceability',trace);panel('report',assessment);'''
+
+    if old_tab_init not in product_redesign.REDESIGN_JS:
+        raise RuntimeError(
+            "Product redesign Test Plan tabs changed; expected Overview-first initialization was not found."
+        )
+    product_redesign.REDESIGN_JS = product_redesign.REDESIGN_JS.replace(
+        old_tab_init,
+        new_tab_init,
+        1,
+    )
+
+    old_tab_click = '''      const tab=e.target.closest('[data-prd-tab]');if(tab){
+        qsa('.prd-tab').forEach(x=>x.classList.remove('prd-active'));
+        qsa('.prd-tab-panel').forEach(x=>x.classList.remove('prd-active'));
+        tab.classList.add('prd-active');const p=qs('[data-prd-panel="'+tab.dataset.prdTab+'"]');if(p)p.classList.add('prd-active');
+      }'''
+
+    new_tab_click = '''      const tab=e.target.closest('[data-prd-tab]');if(tab){
+        qsa('.prd-tab').forEach(x=>x.classList.remove('prd-active'));
+        qsa('.prd-tab-panel').forEach(x=>x.classList.remove('prd-active'));
+        tab.classList.add('prd-active');const p=qs('[data-prd-panel="'+tab.dataset.prdTab+'"]');if(p)p.classList.add('prd-active');
+        if(window.history&&window.history.replaceState)window.history.replaceState(null,'','#'+tab.dataset.prdTab);else window.location.hash=tab.dataset.prdTab;
+      }'''
+
+    if old_tab_click not in product_redesign.REDESIGN_JS:
+        raise RuntimeError(
+            "Product redesign Test Plan tab click handler changed; expected handler was not found."
+        )
+    product_redesign.REDESIGN_JS = product_redesign.REDESIGN_JS.replace(
+        old_tab_click,
+        new_tab_click,
+        1,
+    )
+
     @hub.app.post("/test-plans/<int:plan_id>/items/<int:item_id>/edit")
     def edit_test_plan_item(plan_id, item_id):
         plan = hub.db.session.get(hub.TestPlan, plan_id)
@@ -175,7 +231,7 @@ document.addEventListener('click', function(event){
         item.notes = notes
         plan.updated_at = hub.datetime.now(hub.timezone.utc) if hasattr(hub, "datetime") else plan.updated_at
         hub.db.session.commit()
-        return hub.redirect(hub.url_for("test_plan_details", plan_id=plan.id))
+        return hub.redirect(hub.url_for("test_plan_details", plan_id=plan.id) + "#coverage")
 
     @hub.app.post("/test-plans/<int:plan_id>/items/<int:item_id>/detach")
     def detach_test_plan_item_case(plan_id, item_id):
@@ -189,6 +245,35 @@ document.addEventListener('click', function(event){
         item.test_case = None
         plan.updated_at = hub.datetime.now(hub.timezone.utc) if hasattr(hub, "datetime") else plan.updated_at
         hub.db.session.commit()
-        return hub.redirect(hub.url_for("test_plan_details", plan_id=plan.id))
+        return hub.redirect(hub.url_for("test_plan_details", plan_id=plan.id) + "#coverage")
+
+    # Every operation that changes Coverage returns to Coverage. This central wrapper
+    # also covers routes registered in test_plans.py, so they cannot fall back to
+    # Overview just because an individual redirect forgot the URL fragment.
+    def keep_coverage_redirect(endpoint):
+        original = hub.app.view_functions.get(endpoint)
+        if original is None:
+            return
+
+        def wrapped(*args, **kwargs):
+            response = original(*args, **kwargs)
+            if getattr(response, "status_code", None) in {301, 302, 303, 307, 308} and hasattr(response, "headers"):
+                location = response.headers.get("Location")
+                if location:
+                    response.headers["Location"] = location.split("#", 1)[0] + "#coverage"
+            return response
+
+        wrapped.__name__ = getattr(original, "__name__", endpoint)
+        hub.app.view_functions[endpoint] = wrapped
+
+    for endpoint in (
+        "add_test_plan_item",
+        "attach_test_plan_cases",
+        "attach_test_plan_item_case",
+        "remove_test_plan_item",
+        "edit_test_plan_item",
+        "detach_test_plan_item_case",
+    ):
+        keep_coverage_redirect(endpoint)
 
     hub.app._test_plan_controls_applied = True
