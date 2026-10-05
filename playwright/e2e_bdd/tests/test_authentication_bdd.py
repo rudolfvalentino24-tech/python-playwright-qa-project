@@ -86,3 +86,33 @@ def login_form_should_not_be_submitted(shared_data):
 @when("the user submits the login form")
 def user_submits_login_form(shared_data):
     shared_data["dashboard_page"] = shared_data["login_page"].submitLoginForm()
+
+
+@when("the user navigates to the password visibility toggle using the keyboard")
+def user_navigates_to_password_visibility_toggle_using_keyboard(shared_data):
+    shared_data["login_page"].navigateToPasswordVisibilityToggleUsingKeyboard()
+
+
+@then("the password visibility toggle should be focused")
+def password_visibility_toggle_should_be_focused(shared_data):
+    shared_data["login_page"].verifyPasswordVisibilityToggleFocused()
+
+
+@when("the user activates the password visibility toggle using the keyboard")
+def user_activates_password_visibility_toggle_using_keyboard(shared_data):
+    shared_data["login_page"].activatePasswordVisibilityToggleUsingKeyboard()
+
+
+@then(parsers.parse('the password visibility toggle accessible label should be "{label}"'))
+def password_visibility_toggle_accessible_label_should_be(shared_data, label):
+    shared_data["login_page"].verifyPasswordVisibilityToggleAccessibleLabel(label)
+
+
+@when("the user reloads the login page")
+def user_reloads_login_page(shared_data):
+    shared_data["login_page"].reloadLoginPage()
+
+
+@when("the user leaves and returns to the login page")
+def user_leaves_and_returns_to_login_page(shared_data):
+    shared_data["login_page"].leaveAndReturnToLoginPage()
