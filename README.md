@@ -6,6 +6,22 @@ The project contains local test applications and automated tests for UI testing,
 
 ---
 
+## Documentation
+
+### Test Hub Guide
+
+Learn how to use the Test Hub application, including the QA Workplace, Test Plans, Planned Coverage, Test Cases, Test Runs, Results, Retesting, Release Readiness, risk, exploratory testing, automation health, and reporting.
+
+→ [Test Hub Guide](docs/TEST_HUB_GUIDE.md)
+
+### QA Workflow Guide
+
+Learn how Jira, Test Hub, GitHub, Jenkins, Python, pytest-bdd, and Playwright work together across the complete QA lifecycle, from refinement and Definition of Ready to Test Cases, defects, retesting, QA sign-off, and Release.
+
+→ [QA Workflow Guide](docs/QA_WORKFLOW.md)
+
+---
+
 ## Project Goals
 
 This project is used to practice and demonstrate:
