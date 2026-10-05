@@ -20,6 +20,7 @@ from ai_usage import apply_ai_usage_tracking, apply_ai_usage_ui
 from failure_evidence import register_failure_evidence
 from help_page import register_help_page
 from jira_ui_fix import apply_jira_modal_error_fix
+from password_visibility_case_steps import apply_password_visibility_case_step_migration
 from product_redesign import register_product_redesign
 from qa_intelligence import register_qa_intelligence
 from qa_workflow import register_qa_workflow
@@ -62,6 +63,10 @@ bdd_sync.register_bdd_sync(hub)
 register_ai_automation(hub, bdd_sync)
 apply_ai_usage_ui(ai_designer, bdd_sync)
 apply_workflow_improvements(hub, ui_redesign, bdd_sync)
+
+# Correct the five SCRUM-5 password-visibility Test Hub cases once after pulling
+# this branch. The migration changes only their ordered Steps collections.
+apply_password_visibility_case_step_migration(hub)
 
 # Register Test Plans before the shared Test Hub UI is finalized so the
 # Test Plans tab appears consistently across the existing redesigned pages.
