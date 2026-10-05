@@ -67,3 +67,58 @@ Feature: Authentication
     When the user opens the Terms & Conditions
     Then the Terms & Conditions page should be displayed
     And the QA training warning should be displayed
+
+  @regression @release
+  Scenario: AUTH-PASSWORD-VIS-01 Password visibility toggle shows and hides password correctly
+    Given the user is on the login page
+    When the user enters "Test123!" in the password field
+    Then the password should be masked
+    When the user clicks the password visibility toggle
+    Then the password should be visible
+    And the password value should remain "Test123!"
+    When the user clicks the password visibility toggle
+    Then the password should be masked
+    And the password value should remain "Test123!"
+
+  @smoke @regression @release
+  Scenario: AUTH-PASSWORD-VIS-02 Password visibility toggle does not interfere with login submission
+    Given the user is on the login page
+    And the user enters valid login credentials
+    When the user clicks the password visibility toggle
+    Then the login form should not be submitted
+    And the login page should be displayed
+    When the user submits the login form
+    Then the Store page should be displayed
+
+  @regression @release
+  Scenario: AUTH-PASSWORD-VIS-03 Password visibility toggle supports keyboard interaction and preserves focus
+    Given the user is on the login page
+    And the user enters "Test123!" in the password field
+    When the user navigates to the password visibility toggle using the keyboard
+    Then the password visibility toggle should be focused
+    When the user activates the password visibility toggle using the keyboard
+    Then the password should be visible
+    And the password visibility toggle should be focused
+
+  @regression @release
+  Scenario: AUTH-PASSWORD-VIS-04 Password visibility toggle exposes the correct accessible label
+    Given the user is on the login page
+    And the user enters "Test123!" in the password field
+    Then the password visibility toggle accessible label should be "Show password"
+    When the user clicks the password visibility toggle
+    Then the password visibility toggle accessible label should be "Hide password"
+    When the user clicks the password visibility toggle
+    Then the password visibility toggle accessible label should be "Show password"
+
+  @regression @release
+  Scenario: AUTH-PASSWORD-VIS-05 Password visibility returns to hidden after reload or navigation
+    Given the user is on the login page
+    And the user enters "Test123!" in the password field
+    And the user clicks the password visibility toggle
+    Then the password should be visible
+    When the user reloads the login page
+    Then the password should be masked
+    When the user enters "Test123!" in the password field
+    And the user clicks the password visibility toggle
+    And the user leaves and returns to the login page
+    Then the password should be masked

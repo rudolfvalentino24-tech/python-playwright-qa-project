@@ -6,7 +6,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import pytest
-from pytest_bdd import given, when, then
+from pytest_bdd import given, when, then, parsers
 from pageObjects.login import LoginPage
 from pageObjects.ordersHistory import OrdersHistoryPage
 
@@ -511,3 +511,23 @@ def second_admin_logs_in(second_admin_credentials, shared_data):
 @when("the admin opens Order History from the Store")
 def admin_opens_history_from_store(shared_data):
     shared_data["orders_page"] = shared_data["dashboard_page"].selectOrdersNaviLink()
+
+@when(parsers.parse('the user enters "{password}" in the password field'))
+def user_enters_password(shared_data, password):
+    shared_data["login_page"].enterPassword(password)
+
+
+@then("the password should be masked")
+def password_should_be_masked(shared_data):
+    shared_data["login_page"].verifyPasswordMasked()
+
+
+@then("the password should be visible")
+def password_should_be_visible(shared_data):
+    shared_data["login_page"].verifyPasswordVisible()
+
+
+@when("the user clicks the password visibility toggle")
+def user_clicks_password_visibility_toggle(shared_data):
+    shared_data["login_page"].clickPasswordVisibilityToggle()
+

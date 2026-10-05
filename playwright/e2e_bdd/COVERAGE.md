@@ -83,7 +83,8 @@ All API tests are in `../api/test_store_api.py` and have the `release` marker.
 | REL-API-AUTH-03–06 | `test_login_rejects_invalid_or_missing_credentials` |
 | REL-API-ORD-01–07 | `test_created_order_is_listed_with_correct_details`: created ID, admin/viewer GET, full items/customer/total |
 | REL-API-ORD-08 | `test_invalid_order_items_are_rejected`: invalid IDs/quantities and nonexistent product |
-| REL-API-ORD-09 | `test_required_order_data_is_rejected_when_missing`: each customer field and items; empty-items case also tested |
+| REL-API-ORD-09 | `test_required_order_data_is_rejected_when_missing`: each customer field and items; empty-items case also tested. Customer validation checks HTTP 400, field errors and absence of a created order |
+| REL-API-ORD-09 (additional) | `test_required_customer_fields_reject_invalid_values`: null, empty, whitespace and non-string values for all five customer fields; `test_all_invalid_customer_fields_are_reported` checks multiple field errors; `test_valid_customer_fields_are_trimmed` checks normalized stored data; `test_order_body_must_be_a_json_object` rejects null, array and string bodies |
 | REL-API-ORD-10 | `test_viewer_cannot_create_order` |
 | REL-API-SEC-01–02 | Missing/invalid token GET and POST cases |
 | REL-API-SEC-03 | Expired token cases |
@@ -119,18 +120,23 @@ These are functional UI/API checks. Native form validation coverage does not pro
 the missing-data API tests deliberately check that separately. No tests are skipped or marked expected-failure
 to hide application defects. The legacy standalone viewer/token tests remain available outside these suite commands.
 
-## Local verification — 2026-09-22
+## Local verification — 2026-09-25
 
-All runs used an isolated local instance of `qa_testing_playground/store.py`, with headless browsers.
-The suite now contains 46 BDD UI cases and 30 API cases (76 total).
+All runs used an isolated local instance of `qa_testing_playground/store.py` at
+`http://127.0.0.1:3012`, with headless browsers and the configured Python 3.14.7 interpreter.
+The suite now contains 46 BDD UI cases and 70 API cases (116 total).
 
 | Run | Result | Report |
 | --- | --- | --- |
-| Chromium UI + API release coverage | 71 passed, 5 failed | [Release report](../../artifacts/local-review/store-release-chromium.html) |
-| Chromium UI + API smoke selection | 17 passed, 59 deselected | [Smoke report](../../artifacts/local-review/store-smoke.html) |
+| Chromium UI + API release coverage | 116 passed | [Release report](../../artifacts/local-review/store-release-chromium.html) |
+| Chromium UI + API smoke selection | 17 passed, 99 deselected | [Smoke report](../../artifacts/local-review/store-smoke.html) |
 | Firefox UI coverage | 46 passed | [Firefox report](../../artifacts/local-review/store-firefox.html) |
 
-The five failures are the missing-customer-field API cases documented in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
-They block a fully passing release run. Generated HTML reports are local artifacts and are ignored by Git.
-Pytest also reports upstream Gherkin deprecation warnings under Python 3.14. The optional IDE inspection
-could not complete because PyCharm reported a PSI/index mismatch; the executed tests imported the changed modules.
+The five missing-customer-field API failures recorded on 2026-09-22 are resolved in the local source;
+see [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the original finding and verified resolution. The release run
+also verifies the additional customer-validation regression cases mapped above. These results do not
+verify the deployed Render instance. Generated HTML reports are local artifacts and are ignored by Git.
+
+Pytest reports upstream Gherkin deprecation warnings under Python 3.14. The Chromium release run also
+reported a permission warning when writing the existing pytest cache; smoke and Firefox were run with
+`-p no:cacheprovider` to avoid that local cache restriction.
