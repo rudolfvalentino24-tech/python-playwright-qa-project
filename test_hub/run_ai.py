@@ -18,6 +18,7 @@ from ai_automation_guard import apply_ai_automation_guard
 from ai_designer import register_ai_designer
 from ai_usage import apply_ai_usage_tracking, apply_ai_usage_ui
 from failure_evidence import register_failure_evidence
+from help_page import register_help_page
 from jira_ui_fix import apply_jira_modal_error_fix
 from product_redesign import register_product_redesign
 from qa_intelligence import register_qa_intelligence
@@ -164,6 +165,10 @@ register_test_plan_export(hub)
 # then register the tester-first workspace that consumes those shared facts.
 register_qa_intelligence(hub)
 register_qa_workflow(hub)
+
+# Register the read-only Help & Documentation page before the shared product shell
+# so it receives the normal Test Hub navigation and styling.
+register_help_page(hub)
 
 # Apply the final product design system after every existing page and extension
 # has registered so older template patches cannot overwrite the new shell/modals.
