@@ -148,7 +148,12 @@ Hard rules:
 - If the requested behavior is not yet present in the supplied application source, you may still generate automation from the explicit Test Case and BDD scenario contract.
 - When generating automation for behavior that is not yet implemented, add a clear warning that the automation is test-first and is expected to fail until development is complete.
 - Do not invent arbitrary selectors. For not-yet-implemented behavior, prefer selectors justified by explicit accessible roles, labels, names, IDs or test IDs stated by the scenario, Test Case, or existing project conventions.
-- If no defensible selector can be derived from either application source or the explicit test contract, leave only that unsupported interaction unimplemented and explain why in warnings.
+- In test-first mode, an existing Page Object locator or method for the same UI control is valid project-contract evidence even when that control is not yet present in application source.
+- Reuse existing Page Object selectors and locator conventions for the same control instead of refusing generation.
+- If an existing Page Object already identifies the target control, new interaction methods such as keyboard focus, keyboard activation, or state assertions should reuse that same locator.
+- Do not leave pytest-bdd step definitions empty solely because the product feature is not implemented yet. If a step can call an existing or defensible test-first Page Object method, generate it.
+- Still add a warning when the generated automation depends on behavior that is not yet present in application source.
+- If no defensible selector can be derived from application source, the explicit test contract, or existing Page Object evidence, leave only that unsupported interaction unimplemented and explain why in warnings.
 - Keep code concise and synchronous Playwright only.
 - Do not include Markdown code fences.
 
