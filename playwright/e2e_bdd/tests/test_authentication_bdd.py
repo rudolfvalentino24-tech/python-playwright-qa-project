@@ -108,6 +108,16 @@ def password_visibility_toggle_accessible_label_should_be(shared_data, label):
     shared_data["login_page"].verifyPasswordVisibilityToggleAccessibleLabel(label)
 
 
+@then(parsers.parse('the password visibility toggle should display "{text}"'))
+def password_visibility_toggle_should_display(shared_data, text):
+    shared_data["login_page"].verifyPasswordVisibilityToggleText(text)
+
+
+@then(parsers.parse('the password visibility toggle pressed state should be "{pressed}"'))
+def password_visibility_toggle_pressed_state_should_be(shared_data, pressed):
+    shared_data["login_page"].verifyPasswordVisibilityTogglePressedState(pressed)
+
+
 @when("the user reloads the login page")
 def user_reloads_login_page(shared_data):
     shared_data["login_page"].reloadLoginPage()
