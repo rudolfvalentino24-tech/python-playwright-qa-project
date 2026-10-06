@@ -162,16 +162,6 @@ class LoginPage:
         toggle = self.page.get_by_test_id("password-visibility-toggle")
         expect(toggle).to_have_accessible_name(label)
 
-    def verifyPasswordVisibilityToggleText(self, text):
-        # Verify sighted users can see whether the control will show or hide the password
-        toggle = self.page.get_by_test_id("password-visibility-toggle")
-        expect(toggle).to_have_text(text)
-
-    def verifyPasswordVisibilityTogglePressedState(self, pressed):
-        # Verify the password visibility control exposes its current toggle state
-        toggle = self.page.get_by_test_id("password-visibility-toggle")
-        expect(toggle).to_have_attribute("aria-pressed", pressed)
-
     def reloadLoginPage(self):
         # Reload the login page to verify visibility state does not persist
         self.page.reload(wait_until="domcontentloaded")
