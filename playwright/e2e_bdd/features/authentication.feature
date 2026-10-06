@@ -122,3 +122,12 @@ Feature: Authentication
     And the user clicks the password visibility toggle
     And the user leaves and returns to the login page
     Then the password should be masked
+
+  @regression @release
+  Scenario: AUTH-PASSWORD-VIS-06 Password visibility icon indicates its state without password input
+    Given the user is on the login page
+    Then the password visibility icon should indicate that the password is hidden
+    When the user clicks the password visibility toggle
+    Then the password visibility icon should indicate that the password is visible
+    When the user clicks the password visibility toggle
+    Then the password visibility icon should indicate that the password is hidden

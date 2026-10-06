@@ -171,3 +171,17 @@ class LoginPage:
         # Leave the login page and return through the existing Terms navigation flow
         self.openTermsAndConditions()
         self.returnToLoginPage()
+
+    # Verify the eye icon visually represents the current password visibility state
+    def verifyPasswordVisibilityIconState(self, state):
+        toggle = self.page.get_by_test_id("password-visibility-toggle")
+        expect(toggle).to_contain_text("👁")
+
+        self.page.wait_for_function(
+            """([el, visible]) => {
+                const m = new DOMMatrix(getComputedStyle(el, "::after").transform);
+                const scale = Math.hypot(m.a, m.b);
+                return visible ? scale > 0.9 : scale < 0.1;
+            }""",
+            [toggle.element_handle(), state == "visible"],
+        )

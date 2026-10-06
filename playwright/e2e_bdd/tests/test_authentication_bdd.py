@@ -116,3 +116,7 @@ def user_reloads_login_page(shared_data):
 @when("the user leaves and returns to the login page")
 def user_leaves_and_returns_to_login_page(shared_data):
     shared_data["login_page"].leaveAndReturnToLoginPage()
+
+@then(parsers.parse("the password visibility icon should indicate that the password is {state}"))
+def password_visibility_icon_should_indicate_state(shared_data, state):
+    shared_data["login_page"].verifyPasswordVisibilityIconState(state)
