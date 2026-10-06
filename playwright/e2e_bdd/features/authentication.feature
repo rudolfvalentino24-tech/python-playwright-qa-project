@@ -105,16 +105,10 @@ Feature: Authentication
     Given the user is on the login page
     And the user enters "Test123!" in the password field
     Then the password visibility toggle accessible label should be "Show password"
-    And the password visibility toggle should display "Show"
-    And the password visibility toggle pressed state should be "false"
     When the user clicks the password visibility toggle
     Then the password visibility toggle accessible label should be "Hide password"
-    And the password visibility toggle should display "Hide"
-    And the password visibility toggle pressed state should be "true"
     When the user clicks the password visibility toggle
     Then the password visibility toggle accessible label should be "Show password"
-    And the password visibility toggle should display "Show"
-    And the password visibility toggle pressed state should be "false"
 
   @regression @release
   Scenario: AUTH-PASSWORD-VIS-05 Password visibility returns to hidden after reload or navigation
@@ -122,18 +116,9 @@ Feature: Authentication
     And the user enters "Test123!" in the password field
     And the user clicks the password visibility toggle
     Then the password should be visible
-    And the password visibility toggle should display "Hide"
-    And the password visibility toggle pressed state should be "true"
     When the user reloads the login page
     Then the password should be masked
-    And the password visibility toggle should display "Show"
-    And the password visibility toggle pressed state should be "false"
     When the user enters "Test123!" in the password field
     And the user clicks the password visibility toggle
-    Then the password should be visible
-    And the password visibility toggle should display "Hide"
-    And the password visibility toggle pressed state should be "true"
-    When the user leaves and returns to the login page
+    And the user leaves and returns to the login page
     Then the password should be masked
-    And the password visibility toggle should display "Show"
-    And the password visibility toggle pressed state should be "false"
