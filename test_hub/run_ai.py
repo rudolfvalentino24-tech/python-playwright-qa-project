@@ -56,6 +56,9 @@ def _cached_step_definitions():
 
 bdd_sync._scan_step_definitions = _cached_step_definitions
 
+# Give the AI Test Designer the same live pytest-bdd step scan used by Test Hub automation.
+ai_designer.BDD_DEFINITION_PROVIDER = _cached_step_definitions
+
 apply_ai_automation_guard(ai_automation)
 apply_ai_usage_tracking(ai_designer, ai_automation)
 register_ai_designer(hub)

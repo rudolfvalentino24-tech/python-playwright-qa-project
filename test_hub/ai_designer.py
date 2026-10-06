@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6-terra").strip()
 ALLOWED_SUITE_TAGS = {"smoke", "regression", "release"}
 BDD_STEP_PATTERN = re.compile(r"^(Given|When|Then|And|But)\s+.+", re.IGNORECASE)
+BDD_DEFINITION_PROVIDER = None
 
 
 class SuggestedTestCase(BaseModel):
@@ -22,6 +23,7 @@ class SuggestedTestCase(BaseModel):
     steps: list[str] = Field(min_length=1, max_length=15)
     expected_result: str
     coverage_reason: str
+    planned_coverage_id: int | None = None
 
 
 class SuggestedTestPlan(BaseModel):
@@ -85,6 +87,7 @@ REVIEW_PAGE_HTML = """
 <input type="hidden" name="feature" value="{{ feature }}"><input type="hidden" name="jira_keys" value="{{ jira_keys }}"><input type="hidden" name="test_plan_id" value="{{ test_plan_id or '' }}"><input type="hidden" name="suggestion_count" value="{{ suggestions|length }}">
 {% for item in suggestions %}
 <section class="case"><div class="case-head"><input type="checkbox" name="selected" value="{{ loop.index0 }}" {% if not item.duplicate_reason %}checked{% endif %}><div class="fields">
+<input type="hidden" name="planned_coverage_id_{{ loop.index0 }}" value="{{ item.planned_item.id if item.planned_item else '' }}">
 <div class="grid">
 <div class="field"><label>Test case ID</label><input name="case_key_{{ loop.index0 }}" value="{{ item.case.case_key }}"></div>
 <div class="field"><label>Title</label><input name="title_{{ loop.index0 }}" value="{{ item.case.title }}"></div>
@@ -95,6 +98,7 @@ REVIEW_PAGE_HTML = """
 <div class="field"><label>Preconditions</label><textarea name="preconditions_{{ loop.index0 }}">{{ item.case.preconditions }}</textarea></div>
 <div class="field"><label>Steps — one per line</label><textarea name="steps_{{ loop.index0 }}">{{ item.case.steps|join('\n') }}</textarea></div>
 <div class="field"><label>Expected result</label><textarea name="expected_result_{{ loop.index0 }}">{{ item.case.expected_result }}</textarea></div>
+{% if item.planned_item %}<div class="reason"><strong>Planned coverage:</strong> {{ item.planned_item.title_snapshot }}</div>{% endif %}
 {% if item.duplicate_reason %}<div class="warning">⚠ {{ item.duplicate_reason }} Edit it before selecting this case.</div>{% endif %}
 <div class="reason"><strong>Why AI suggested it:</strong> {{ item.case.coverage_reason }}</div>
 </div></div></section>
@@ -102,6 +106,30 @@ REVIEW_PAGE_HTML = """
 <div class="actions"><a class="secondary" href="{{ url_for('ai_test_designer') }}">Cancel</a><button class="primary" type="submit">Create selected drafts</button></div>
 </form></main></body></html>
 """
+
+
+def _implemented_bdd_context():
+    # Reuse the real pytest-bdd scanner when Test Hub provides it from run_ai.py.
+    if not callable(BDD_DEFINITION_PROVIDER):
+        return "- Implemented BDD scanner is not available"
+
+    try:
+        definitions = BDD_DEFINITION_PROVIDER() or []
+    except Exception as exc:
+        return f"- Implemented BDD scan failed: {exc}"
+
+    rows = []
+    seen = set()
+    for definition in definitions:
+        text = str(definition.get("text") or "").strip()
+        if not text or text.lower() in seen:
+            continue
+        seen.add(text.lower())
+        source = str(definition.get("source") or "").strip()
+        rows.append(f"- {text}" + (f" [{source}]" if source else ""))
+        if len(rows) >= 200:
+            break
+    return "\n".join(rows) or "- No implemented BDD step definitions"
 
 
 def _existing_context(hub):
@@ -124,34 +152,157 @@ def _existing_context(hub):
                 seen.add(action.lower())
                 step_actions.append(action)
 
-    existing_steps = "\n".join(f"- {step}" for step in step_actions[:150]) or "- No existing BDD steps"
-    return existing_cases, existing_steps
+    stored_steps = "\n".join(f"- {step}" for step in step_actions[:150]) or "- No stored Test Hub BDD steps"
+    return existing_cases, stored_steps, _implemented_bdd_context()
 
 
-def _generate_plan(hub, feature, requirement, count, preference):
+def _test_plan_jira_keys(hub, test_plan):
+    if test_plan is None:
+        return []
+    model = getattr(hub, "TestPlanJiraLink", None)
+    if model is None:
+        return []
+    return list(
+        hub.db.session.scalars(
+            hub.db.select(model.jira_key)
+            .where(model.test_plan_id == test_plan.id)
+            .order_by(model.jira_key)
+        ).all()
+    )
+
+
+def _test_plan_context(hub, test_plan):
+    if test_plan is None:
+        return "- No Test Plan selected"
+
+    lines = [
+        f"Name: {test_plan.name}",
+        f"Status: {test_plan.status}",
+        f"Plan type: {getattr(test_plan, 'plan_type', '') or 'Not defined'}",
+        f"Application: {getattr(test_plan, 'application', '') or 'Not defined'}",
+        f"Feature / Module: {getattr(test_plan, 'feature', '') or 'Not defined'}",
+        f"Summary / Context: {getattr(test_plan, 'description', '') or 'Not defined'}",
+        f"Objective: {getattr(test_plan, 'objective', '') or 'Not defined'}",
+        f"In Scope: {getattr(test_plan, 'in_scope', '') or 'Not defined'}",
+        f"Out of Scope: {getattr(test_plan, 'out_of_scope', '') or 'Not defined'}",
+        f"Risks / Edge Cases: {getattr(test_plan, 'risks', '') or 'Not defined'}",
+        f"Environment: {getattr(test_plan, 'environment', '') or 'Not defined'}",
+        f"Entry Criteria: {getattr(test_plan, 'entry_criteria', '') or 'Not defined'}",
+        f"Exit Criteria: {getattr(test_plan, 'exit_criteria', '') or 'Not defined'}",
+    ]
+
+    pending = [item for item in test_plan.items if item.test_case is None]
+    covered = [item for item in test_plan.items if item.test_case is not None]
+
+    lines.append("Pending planned coverage:")
+    if pending:
+        for item in pending:
+            notes = f" | Notes: {item.notes}" if item.notes else ""
+            lines.append(
+                f"- ID {item.id}: [{item.feature_snapshot or 'Uncategorized'}] "
+                f"{item.title_snapshot}{notes}"
+            )
+    else:
+        lines.append("- None")
+
+    lines.append("Already covered Test Plan items:")
+    if covered:
+        for item in covered:
+            lines.append(
+                f"- {item.test_case.case_key}: [{item.feature_snapshot or item.test_case.feature_name}] "
+                f"{item.title_snapshot}"
+            )
+    else:
+        lines.append("- None")
+
+    plan_jira_keys = _test_plan_jira_keys(hub, test_plan)
+    lines.append("Test Plan Jira scope: " + (", ".join(plan_jira_keys) if plan_jira_keys else "None"))
+    return "\n".join(lines)
+
+
+def _jira_description_text(value):
+    # Jira Cloud descriptions use Atlassian Document Format; flatten the readable text for AI context.
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, list):
+        return "\n".join(part for part in (_jira_description_text(item) for item in value) if part).strip()
+    if not isinstance(value, dict):
+        return str(value).strip()
+
+    direct_text = str(value.get("text") or "").strip()
+    content_text = [_jira_description_text(item) for item in value.get("content") or []]
+    parts = ([direct_text] if direct_text else []) + [part for part in content_text if part]
+    separator = "\n" if value.get("type") in {"doc", "paragraph", "heading", "bulletList", "orderedList", "listItem"} else " "
+    return separator.join(parts).strip()
+
+
+def _jira_context(hub, jira_keys):
+    jira_keys = list(dict.fromkeys(key for key in jira_keys if key))
+    if not jira_keys:
+        return "- No Jira stories supplied"
+    if not callable(getattr(hub, "jira_api_request", None)):
+        raise RuntimeError("Jira integration is not available to the AI Test Designer.")
+
+    rows = []
+    for jira_key in jira_keys:
+        try:
+            issue = hub.jira_api_request(
+                f"/rest/api/3/issue/{jira_key}?fields=summary,status,description"
+            ) or {}
+        except RuntimeError as exc:
+            raise RuntimeError(
+                f"Could not load Jira story {jira_key} for test generation: {exc}"
+            ) from exc
+
+        fields = issue.get("fields") or {}
+        summary = str(fields.get("summary") or "").strip() or "No summary"
+        status = str((fields.get("status") or {}).get("name") or "").strip() or "Unknown"
+        description = _jira_description_text(fields.get("description")) or "No description"
+        rows.append(
+            f"- {jira_key}\n"
+            f"  Summary: {summary}\n"
+            f"  Status: {status}\n"
+            f"  Description: {description}"
+        )
+    return "\n".join(rows)
+
+
+def _generate_plan(hub, feature, requirement, count, preference, selected_test_plan=None, jira_keys=None):
     api_key = os.environ.get("OPENAI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not configured for Test Hub.")
 
-    existing_cases, existing_steps = _existing_context(hub)
+    existing_cases, stored_steps, implemented_steps = _existing_context(hub)
+    plan_jira_keys = _test_plan_jira_keys(hub, selected_test_plan)
+    context_jira_keys = list(dict.fromkeys(list(jira_keys or []) + plan_jira_keys))
+    test_plan_context = _test_plan_context(hub, selected_test_plan)
+    jira_context = _jira_context(hub, context_jira_keys)
     client = OpenAI(api_key=api_key)
 
     instructions = f"""You are the AI Test Designer inside a QA test management system.
-Generate high-value, non-duplicate test cases from the supplied feature description.
+Generate high-value, non-duplicate test cases from the supplied feature description and the connected QA context.
 Return exactly the structured schema requested.
 
 Rules:
 - Target approximately {count} cases.
 - Preferred type is {preference}. Respect it unless a different type is clearly more appropriate.
-- Do not duplicate existing test cases. Cover missing happy paths, negative paths, validation, permissions, state transitions and meaningful edge cases only when relevant to the requirement.
+- Treat Pending planned coverage in the selected Test Plan as requirements to satisfy, not optional background.
+- When a suggestion is intended to satisfy one Pending planned coverage item, set planned_coverage_id to that exact numeric ID. Use null when the suggestion does not satisfy a Pending item.
+- Never invent a planned_coverage_id and never point to an already-covered Test Plan item.
+- Do not generate coverage that is explicitly Out of Scope in the selected Test Plan.
+- Use the Test Plan Objective, In Scope, Risks / Edge Cases, environment and Jira story content when deciding what to cover.
+- Do not duplicate existing test cases or already-covered Test Plan items. Cover missing happy paths, negative paths, validation, permissions, state transitions and meaningful edge cases only when relevant.
 - Keep cases atomic unless the requirement genuinely calls for an end-to-end journey.
 - case_key must be unique-looking, uppercase, 3-64 characters, and contain only letters, numbers, hyphens or underscores.
 - For Automated cases every step must start with Given, When, Then, And or But.
-- Prefer exact existing BDD step wording when it already expresses the needed action/assertion.
+- Prefer exact existing Test Hub BDD wording when it already expresses the needed action/assertion.
+- Prefer the real implemented pytest-bdd step bodies shown below; add the appropriate Given/When/Then keyword while preserving their wording.
 - Automated cases should normally include regression and release suite tags. Add smoke only for truly critical paths.
 - Manual cases may have no suite tags.
 - expected_result must be observable and testable.
-- coverage_reason should briefly explain the distinct risk or requirement covered.
+- coverage_reason should briefly explain the distinct risk, Jira requirement or planned coverage item addressed.
 """
 
     user_input = f"""Feature / Module: {feature}
@@ -159,11 +310,20 @@ Rules:
 Requirement / acceptance criteria:
 {requirement}
 
+Selected Test Plan context:
+{test_plan_context}
+
+Jira story context:
+{jira_context}
+
 Existing Test Hub cases to avoid duplicating:
 {existing_cases}
 
-Existing BDD step vocabulary to reuse when useful:
-{existing_steps}
+Stored Test Hub BDD steps to reuse when useful:
+{stored_steps}
+
+Real implemented pytest-bdd step bodies from the repository:
+{implemented_steps}
 """
 
     response = client.responses.parse(
@@ -219,6 +379,15 @@ def _resolve_test_plan(hub, raw_value):
     if plan is None:
         raise ValueError("Test Plan not found.")
     return plan
+
+
+def _resolve_planned_item(selected_test_plan, planned_coverage_id):
+    if selected_test_plan is None or planned_coverage_id is None:
+        return None
+    for item in selected_test_plan.items:
+        if item.id == planned_coverage_id and item.test_case is None:
+            return item
+    return None
 
 
 def register_ai_designer(hub):
@@ -290,8 +459,16 @@ def register_ai_designer(hub):
             ), 400
 
         try:
-            hub.parse_jira_keys(jira_keys)
-            plan = _generate_plan(hub, feature, requirement, count, preference)
+            parsed_jira_keys = hub.parse_jira_keys(jira_keys)
+            plan = _generate_plan(
+                hub,
+                feature,
+                requirement,
+                count,
+                preference,
+                selected_test_plan=selected_test_plan,
+                jira_keys=parsed_jira_keys,
+            )
         except Exception as exc:
             message = str(exc)
             if len(message) > 500:
@@ -308,10 +485,22 @@ def register_ai_designer(hub):
                 preference=preference,
             ), 400
 
-        suggestions = [
-            {"case": case, "duplicate_reason": _duplicate_reason(hub, feature, case)}
-            for case in plan.test_cases
-        ]
+        suggestions = []
+        for case in plan.test_cases:
+            planned_item = _resolve_planned_item(selected_test_plan, case.planned_coverage_id)
+            duplicate_reason = _duplicate_reason(hub, feature, case)
+            if case.planned_coverage_id is not None and planned_item is None and not duplicate_reason:
+                duplicate_reason = (
+                    f"Planned coverage ID {case.planned_coverage_id} is not a Pending item in the selected Test Plan."
+                )
+            suggestions.append(
+                {
+                    "case": case,
+                    "planned_item": planned_item,
+                    "duplicate_reason": duplicate_reason,
+                }
+            )
+
         return hub.render_template_string(
             REVIEW_PAGE_HTML,
             feature=feature,
@@ -342,6 +531,7 @@ def register_ai_designer(hub):
         errors = []
         prepared = []
         selected_keys = set()
+        selected_coverage_ids = set()
 
         for raw_index in selected:
             try:
@@ -356,6 +546,25 @@ def register_ai_designer(hub):
             preconditions = hub.request.form.get(f"preconditions_{index}", "").strip()
             steps = hub.normalize_lines(hub.request.form.get(f"steps_{index}", ""))
             expected_result = hub.request.form.get(f"expected_result_{index}", "").strip()
+            planned_coverage_raw = hub.request.form.get(f"planned_coverage_id_{index}", "").strip()
+            planned_coverage_id = None
+            if planned_coverage_raw:
+                if not planned_coverage_raw.isdigit():
+                    errors.append(f"{case_key or 'Unnamed case'}: invalid planned coverage ID.")
+                    continue
+                planned_coverage_id = int(planned_coverage_raw)
+                planned_item = _resolve_planned_item(selected_test_plan, planned_coverage_id)
+                if planned_item is None:
+                    errors.append(
+                        f"{case_key or 'Unnamed case'}: planned coverage is no longer Pending in the selected Test Plan."
+                    )
+                    continue
+                if planned_coverage_id in selected_coverage_ids:
+                    errors.append(
+                        f"{case_key or 'Unnamed case'}: the same planned coverage item was selected twice."
+                    )
+                    continue
+
             tags = {
                 tag.strip().lower()
                 for tag in hub.request.form.getlist(f"suite_tags_{index}")
@@ -387,6 +596,8 @@ def register_ai_designer(hub):
                 tags.update({"regression", "release"})
 
             selected_keys.add(case_key)
+            if planned_coverage_id is not None:
+                selected_coverage_ids.add(planned_coverage_id)
             prepared.append({
                 "case_key": case_key,
                 "title": title,
@@ -396,6 +607,7 @@ def register_ai_designer(hub):
                 "preconditions": preconditions,
                 "steps": steps,
                 "expected_result": expected_result,
+                "planned_coverage_id": planned_coverage_id,
             })
 
         if errors:
@@ -420,15 +632,25 @@ def register_ai_designer(hub):
             ]
             hub.set_jira_links(case, jira_keys)
             hub.db.session.add(case)
-            created_cases.append(case)
+            created_cases.append((case, item))
 
         if selected_test_plan is not None:
             position = max(
                 (item.position for item in selected_test_plan.items),
                 default=0,
             ) + 1
-            for case in created_cases:
-                # AI-created cases immediately satisfy coverage in the selected Test Plan.
+            for case, generated in created_cases:
+                planned_coverage_id = generated["planned_coverage_id"]
+                if planned_coverage_id is not None:
+                    # Satisfy the existing Pending coverage item instead of creating a duplicate checklist row.
+                    planned_item = _resolve_planned_item(selected_test_plan, planned_coverage_id)
+                    if planned_item is None:
+                        hub.db.session.rollback()
+                        return "Planned coverage changed before the generated Test Case could be created.", 409
+                    planned_item.test_case = case
+                    continue
+
+                # Suggestions that do not target Pending coverage still become new covered plan items.
                 selected_test_plan.items.append(
                     hub.TestPlanItem(
                         test_case=case,
