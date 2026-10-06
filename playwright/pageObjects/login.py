@@ -183,5 +183,5 @@ class LoginPage:
                 const scale = Math.hypot(m.a, m.b);
                 return visible ? scale > 0.9 : scale < 0.1;
             }""",
-            [toggle.element_handle(), state == "visible"],
+            arg=[toggle.element_handle(), state == "visible"],
         )
