@@ -176,6 +176,25 @@ input[type="password"]:focus{
     font-size:18px;
 }
 
+/* Draw a slash across the eye while the password is visible. */
+.password-toggle::after{
+    content:"";
+    position:absolute;
+    left:9px;
+    top:19px;
+    width:22px;
+    height:2px;
+    border-radius:2px;
+    background:currentColor;
+    transform:rotate(-45deg) scaleX(0);
+    transition:transform .15s ease;
+    pointer-events:none;
+}
+
+.password-toggle[aria-pressed="true"]::after{
+    transform:rotate(-45deg) scaleX(1);
+}
+
 .password-toggle:focus-visible{
     outline:3px solid rgba(59,115,239,.35);
     outline-offset:2px;
