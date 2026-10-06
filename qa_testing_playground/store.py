@@ -166,15 +166,33 @@ input[type="password"]:focus{
     right:10px;
     top:50%;
     transform:translateY(-50%);
-    width:52px;
+    width:40px;
     height:40px;
     border:0;
     border-radius:8px;
     background:transparent;
     color:#64748b;
     cursor:pointer;
-    font-size:14px;
-    font-weight:700;
+    font-size:18px;
+}
+
+/* Draw a slash across the eye while the password is visible. */
+.password-toggle::after{
+    content:"";
+    position:absolute;
+    left:9px;
+    top:19px;
+    width:22px;
+    height:2px;
+    border-radius:2px;
+    background:currentColor;
+    transform:rotate(-45deg) scaleX(0);
+    transition:transform .15s ease;
+    pointer-events:none;
+}
+
+.password-toggle[aria-pressed="true"]::after{
+    transform:rotate(-45deg) scaleX(1);
 }
 
 .password-toggle:focus-visible{
@@ -183,7 +201,7 @@ input[type="password"]:focus{
 }
 
 #password{
-    padding-right:72px;
+    padding-right:58px;
 }
 
 .option{
@@ -316,7 +334,7 @@ input[type="password"]:focus{
                 data-testid="password-visibility-toggle"
                 aria-label="Show password"
                 aria-pressed="false">
-                Show
+                👁
             </button>
         </div>
 
@@ -376,17 +394,10 @@ passwordToggle.addEventListener("click", () => {
     const showPassword = passwordInput.type === "password";
 
     passwordInput.type = showPassword ? "text" : "password";
-
-    // Update the visible control text so sighted users can identify the state.
-    passwordToggle.textContent = showPassword ? "Hide" : "Show";
-
-    // Update the accessible label for screen-reader users.
     passwordToggle.setAttribute(
         "aria-label",
         showPassword ? "Hide password" : "Show password"
     );
-
-    // Expose the current toggle state to assistive technologies.
     passwordToggle.setAttribute(
         "aria-pressed",
         showPassword ? "true" : "false"
